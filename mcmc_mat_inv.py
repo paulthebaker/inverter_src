@@ -18,7 +18,7 @@ import random as rand
 log2P = np.log(2.0*np.pi)
 
 def parse_options(argv):
-    # command line parser
+    """command line parser"""
     inputfile = 'mat_in.dat'
     outputfile = 'mat_out.dat'
     seed = None
@@ -59,6 +59,7 @@ def parse_options(argv):
 
 
 def get_Mat(filename):
+    """read a square matrix from file"""
     mat = np.loadtxt(filename)
     if mat.shape[0] != mat.shape[1]:
         print( '  ERROR: input matrix is not square %dx%d'%(mat.shape[0], mat.shape[1]) )
@@ -67,17 +68,34 @@ def get_Mat(filename):
 
 
 def print_Mat(mat,filename):
+    """print a matrix to file"""
     np.savetxt(filename, mat, fmt='%+.9e')
 
 
 def log_L(M, G):
-    # compute logL for Guess
-    # uses sigma=0.1
+    """compute logL for a Guess"""
+    # TODO HARDCODED: sigma=0.1
     sigsq = (0.01)
     Id = np.identity(M.shape[0],float)
     R = np.dot(M,G) - Id
     return -0.5*( R.size*log2P + sum(sum(R*R/2.0))/sigsq ) # R*R is element by element product
 
+def proposal(Ga):
+    """ propose a new state for MCMC
+    
+    currently only uses a Fischer jump
+    return new state (Gb) and proposal density (dlogQ) for Hastings Ratio
+    """
+#   TODO: implement suite of proposals... 
+#         fischer jump, prior draw, ???
+    Gb = Ga.copy()
+    # fischer jump
+    for i in range(Ga.shape[0]):
+        for j in range(Ga.shape[1]):
+            dG = rand.gauss(0.0,0.1)/float(Ga.size)
+            Gb[i,j] = Ga[i,j] + dG
+    dlogQ = 0.  # fischer jump is symmetric: Qa == Qb => dQ=0.
+    return (Gb, dlogQ)
 
 ##### BEGIN MAIN #####
 infile_name, outfile_name, number, SEED = parse_options(sys.argv[1:])
@@ -86,6 +104,9 @@ rand.seed(SEED)
 
 rawM = get_Mat(infile_name)
 detM = linalg.det(rawM)
+if(detM == 0):
+    print("ERROR: det[M]=0, cannot invert")
+    exit(2) 
 scale = np.power(detM,-1.0/rawM.shape[0])
 M = scale*rawM.copy()  # scale so det(M)=1
 
@@ -93,50 +114,29 @@ M = scale*rawM.copy()  # scale so det(M)=1
 # let (a) be current state, (b) be proposed new state
 Ga = np.identity(M.shape[0],float)  # first guess is I
 logLa = log_L(M,Ga)
-Minv = Ga.copy()       # init best fit Minv
+Minv = Ga.copy()         # init best fit Minv to first guess
 logLmax = log_L(M,Minv)
-
 
 N = number   # number o' MCMC samples
 acc = 0
 
 for n in range(N):
-    # TODO
-    # pick number of elements to change: k = rand.randrange(M.size)
-    # random.sample( ,k)
+    # MCMC LOOP
+    Gb, dlogQ = proposal(Ga)
 
-    # propose a new state Gb (Fischer jump, Gb = Ga+dG)
-    Gb = Ga.copy()
-    for i in range(M.shape[0]):
-        for j in range(M.shape[1]):
-            dG = rand.gauss(0.0,0.1)/float(M.size)
-            Gb[i,j] = Ga[i,j] + dG
-
-    # propose a new state by changing one element of Ga
-#    i = rand.randrange(0,Ga.shape[0],1)
-#    j = rand.randrange(0,Ga.shape[1],1)
-#    jump_type = rand.random()
-#    if (jump_type > 0.5):
-#        dG = rand.gauss(0.0,0.1)   # 1 sigma jump
-#    elif (jump_type > 0.1):
-#        dG = rand.gauss(0.0,0.01)  # tiny jump
-#    else:
-#        dG = rand.gauss(0.0,1.0)   # big jump
-#    Gb[i,j] = Ga[i,j] + dG
-
-    # is proposal accepted?
+    # compute logL and Hastings Ratio
     logLb = log_L(M,Gb)
-    logH = logLb - logLa
+    logH = logLb - logLa + dlogQ
 
     b = np.log(rand.random())
 
-    if ( n%1000 == 0 ):
+    if ( n%1000 == 0 ):  # print progress to stdout
         print(
               "n:%d :  logL = %.4f,  logH = %.4f,  b = %.4f,  acc = %.4f"
               %(n, logLa, logH, b, float(acc)/float(n+1) )
              )
 
-    if ( logH >= b ): # accept ... (b) -> (a)
+    if ( logH >= b ):  # accept proposal ... (b) -> (a)
         Ga = Gb.copy()
         logLa = logLb
         acc = acc + 1
