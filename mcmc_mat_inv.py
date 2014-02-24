@@ -13,7 +13,6 @@ import sys
 import getopt
 import numpy as np
 from scipy import linalg
-from copy import deepcopy as cp
 import random as rand
 
 log2P = np.log(2.0*np.pi)
@@ -56,25 +55,27 @@ def parse_options(argv):
             seed = int(arg)
         elif opt in ("-n", "--number"):
             number = int(arg)
-        return (inputfile, outputfile, number, seed)
+    return (inputfile, outputfile, number, seed)
 
 
 def get_Mat(filename):
-    infile = open(filename,'r')
-    mat = np.loadtxt(infile)
+    mat = np.loadtxt(filename)
     if mat.shape[0] != mat.shape[1]:
         print( '  ERROR: input matrix is not square %dx%d'%(mat.shape[0], mat.shape[1]) )
         sys.exit(2)
-    infile.close()
     return mat
+
+
+def print_Mat(mat,filename):
+    np.savetxt(filename, mat, fmt='%+.9e')
 
 
 def log_L(M, G):
     # compute logL for Guess
     # uses sigma=0.1
     sigsq = (0.01)
-    I = np.identity(M.shape[0],float)
-    R = np.dot(M,G)-I
+    Id = np.identity(M.shape[0],float)
+    R = np.dot(M,G) - Id
     return -0.5*( R.size*log2P + sum(sum(R*R/2.0))/sigsq ) # R*R is element by element product
 
 
@@ -86,17 +87,17 @@ rand.seed(SEED)
 rawM = get_Mat(infile_name)
 detM = linalg.det(rawM)
 scale = np.power(detM,-1.0/rawM.shape[0])
-M = scale*cp(rawM)  # scale so det(M)=1
+M = scale*rawM.copy()  # scale so det(M)=1
 
 # initialize MCMC
 # let (a) be current state, (b) be proposed new state
 Ga = np.identity(M.shape[0],float)  # first guess is I
 logLa = log_L(M,Ga)
-Gb = cp(Ga)
-Minv = cp(Ga)   # init best fit Minv
+Minv = Ga.copy()       # init best fit Minv
 logLmax = log_L(M,Minv)
 
-N = 100000   # number o' MCMC samples
+
+N = number   # number o' MCMC samples
 acc = 0
 
 for n in range(N):
@@ -105,55 +106,64 @@ for n in range(N):
     # random.sample( ,k)
 
     # propose a new state Gb (Fischer jump, Gb = Ga+dG)
-#    Gb = Ga
-#    for i in range(M.shape[0]):
-#        for j in range(M.shape[1]):
-#            dG = rand.gauss(0.0,0.1)/float(M.size)
-#            Gb[i,j] = Ga[i,j] + dG #rand.gauss(0.0,1.0)/float(M.size)
+    Gb = Ga.copy()
+    for i in range(M.shape[0]):
+        for j in range(M.shape[1]):
+            dG = rand.gauss(0.0,0.1)/float(M.size)
+            Gb[i,j] = Ga[i,j] + dG
 
     # propose a new state by changing one element of Ga
-    i = rand.randrange(0,Ga.shape[0],1)
-    j = rand.randrange(0,Ga.shape[1],1)
-    dG = rand.gauss(0.0,0.1)
-    Gb[i,j] = Ga[i,j] + dG
+#    i = rand.randrange(0,Ga.shape[0],1)
+#    j = rand.randrange(0,Ga.shape[1],1)
+#    jump_type = rand.random()
+#    if (jump_type > 0.5):
+#        dG = rand.gauss(0.0,0.1)   # 1 sigma jump
+#    elif (jump_type > 0.1):
+#        dG = rand.gauss(0.0,0.01)  # tiny jump
+#    else:
+#        dG = rand.gauss(0.0,1.0)   # big jump
+#    Gb[i,j] = Ga[i,j] + dG
 
     # is proposal accepted?
     logLb = log_L(M,Gb)
     logH = logLb - logLa
-### TODO!!!! RUNAWAY LOG(H)???
 
     b = np.log(rand.random())
 
-    if ( n%100 == 0 ):
+    if ( n%1000 == 0 ):
         print(
-              "logL = %.4f,  logH = %.4f,  b = %.4f,  acc = %.4f"
-              %(logLa, logH, b, float(acc)/float(n+1) )
+              "n:%d :  logL = %.4f,  logH = %.4f,  b = %.4f,  acc = %.4f"
+              %(n, logLa, logH, b, float(acc)/float(n+1) )
              )
 
     if ( logH >= b ): # accept ... (b) -> (a)
-#  if ( logH >= np.log(rand.random()) ): # accept ... (b) -> (a)
-        Ga = cp(Gb)
+        Ga = Gb.copy()
         logLa = logLb
         acc = acc + 1
-#        print("  accepted!!!")
         if ( logLa > logLmax ):  # new best fit (maximum likelihood)
-            Minv = cp(Ga)
+            Minv = Ga.copy()
             logLmax = logLa
 # end for
 
+# write rescaled Minv to file
+rawMinv = scale*Minv.copy()
+print_Mat(rawMinv, outfile_name)
+
+# print stuff to command line
 print("")
 print("acceptance = %.4f"%( float(acc)/float(N) ))
 print("")
 print("max logL =", logLmax)
 print("")
+np.set_printoptions(precision=4)
 print("M =") 
-print(M)
+print(rawM)
 print("")
 print("Minv =") 
-print(Minv)
+print(rawMinv)
 print("")
 print("M*Minv =")
-print(M*Minv)
+print(np.dot(rawM,rawMinv))
 print("")
 
 
