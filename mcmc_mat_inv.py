@@ -10,6 +10,7 @@
 #
 
 import sys
+import time
 import getopt
 import numpy as np
 from scipy import linalg
@@ -83,18 +84,18 @@ def log_L(M, G):
 def proposal(Ga):
     """ propose a new state for MCMC
     
-    currently only uses a Fischer jump
+    currently only uses a random direction jump
     return new state (Gb) and proposal density (dlogQ) for Hastings Ratio
     """
 #   TODO: implement suite of proposals... 
 #         fischer jump, prior draw, ???
     Gb = Ga.copy()
-    # fischer jump
+    # random direction, gaussian 1-sigma jump
     for i in range(Ga.shape[0]):
         for j in range(Ga.shape[1]):
             dG = rand.gauss(0.0,0.1)/float(Ga.size)
             Gb[i,j] = Ga[i,j] + dG
-    dlogQ = 0.  # fischer jump is symmetric: Qa == Qb => dQ=0.
+    dlogQ = 0.  # jump is symmetric: Qa == Qb => dQ=0.
     return (Gb, dlogQ)
 
 ##### BEGIN MAIN #####
@@ -120,6 +121,11 @@ logLmax = log_L(M,Minv)
 N = number   # number o' MCMC samples
 acc = 0
 
+chainfile = open('chain.dat','w') # flushes chain.dat ... TODO: better
+chainfile.close()
+
+t_start = time.clock()
+
 for n in range(N):
     # MCMC LOOP
     Gb, dlogQ = proposal(Ga)
@@ -143,13 +149,23 @@ for n in range(N):
         if ( logLa > logLmax ):  # new best fit (maximum likelihood)
             Minv = Ga.copy()
             logLmax = logLa
+
+#TODO: open file once and leave open ... will buffers speed things up?
+#    with open('chain.dat', 'ab') as chain_file:
+#        tmp = np.hstack( ([[n]], [[logLa]], (Ga.copy()).reshape(1,Ga.size)) )
+#        np.savetxt(chain_file, tmp, fmt='%+.8e', newline=' ')
+#        chain_file.write(b'\n')
 # end for
+
+t_end = time.clock()
 
 # write rescaled Minv to file
 rawMinv = scale*Minv.copy()
 print_Mat(rawMinv, outfile_name)
 
 # print stuff to command line
+print("")
+print("MCMC runtime: %.4f sec"%(t_end-t_start))
 print("")
 print("acceptance = %.4f"%( float(acc)/float(N) ))
 print("")
@@ -165,5 +181,4 @@ print("")
 print("M*Minv =")
 print(np.dot(rawM,rawMinv))
 print("")
-
 
