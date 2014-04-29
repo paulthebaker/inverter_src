@@ -9,6 +9,13 @@
 # by Paul T. Baker, bakerp@geneseo.edu
 #
 
+"""
+the likelihood for the MCMC goes like exp(R.R/2) where R is the residual S-H
+our data, S, is the identity matrix
+our model, H, is the matrix product of the input matrix M and the current guess G
+each matrix is treated like a vector of the N*N entries
+"""
+
 import sys
 import time
 import getopt
@@ -17,18 +24,21 @@ from scipy import linalg
 import random as rand
 
 log2P = np.log(2.0*np.pi)
+reps = np.sqrt(np.finfo(np.float64).eps)
+
 
 def parse_options(argv):
     """command line parser"""
     inputfile = 'mat_in.dat'
     outputfile = 'mat_out.dat'
     seed = None
-    number = 1000
+    number = 10000
+    burn = int(number/10)
     try:
         opts, args = getopt.getopt(
                          argv,
-                         "hi:o:s:n:",
-                         ["help","ifile=","ofile=","seed=","number="]
+                         "hi:o:s:n:b:",
+                         ["help","ifile=","ofile=","seed=","number=","burn-in"]
                      )
     except getopt.GetoptError:
         print('  ERROR: invalid options, try --help for more info')
@@ -46,6 +56,7 @@ def parse_options(argv):
             print('')
             print('   --seed, -s <seed>            seed to initialize random()')
             print('   --number, -n <number>        number of samples in MCMC')
+            print('   --burn-in, -b <N_burn>       length of burn in')
             print('')
             sys.exit()
         elif opt in ("-i", "--ifile"):
@@ -56,7 +67,9 @@ def parse_options(argv):
             seed = int(arg)
         elif opt in ("-n", "--number"):
             number = int(arg)
-    return (inputfile, outputfile, number, seed)
+        elif opt in ("-b", "--burn-in"):
+            burn = int(arg)
+    return (inputfile, outputfile, number, burn, seed)
 
 
 def get_Mat(filename):
@@ -73,6 +86,34 @@ def print_Mat(mat,filename):
     np.savetxt(filename, mat, fmt='%+.9e')
 
 
+def fisher(M, G):
+    """compute Fisher Info matrix: Fij = (h,i|h,j)"""
+    # TODO Fisher is symmetric ... only need lower triangle...
+    n = G.shape[0]
+    dh = np.zeros([n*n,n,n])
+    F = np.zeros([n*n,n*n])
+    # compute derivatives of H
+    for i in range(n):
+        for j in range(n):
+            # establish good choice for dg
+            if( G[i,j]!=0 ):
+                tmp = reps*G[i,j]
+            else:
+                tmp = reps
+            dg = (tmp+G[i,j]) - G[i,j]
+            dG = np.zeros_like(G)
+            dG[i,j]=dg
+            # H = np.dot(M,G)
+            dh[i*n+j,:,:] = 0.5*( np.dot(M,G+dG) - np.dot(M,G-dg) ) / dg
+    # components of F
+    for j in range(n*n):
+        for i in range(j,n*n):
+            F[i,j] = sum(sum( dh[i,:,:]*dh[j,:,:] )) # inner product
+    # compute eigen-stuff for Fij use lower triangle
+    val, vec = linalg.eigh(F, lower=True)
+    return (val, vec.reshape([n*n,n,n]))
+
+
 def log_L(M, G):
     """compute logL for a Guess"""
     # TODO HARDCODED: sigma=0.1
@@ -81,6 +122,7 @@ def log_L(M, G):
     R = np.dot(M,G) - Id
     return -0.5*( R.size*log2P + sum(sum(R*R/2.0))/sigsq ) # R*R is element by element product
 
+
 def proposal(Ga):
     """ propose a new state for MCMC
     
@@ -88,7 +130,7 @@ def proposal(Ga):
     return new state (Gb) and proposal density (dlogQ) for Hastings Ratio
     """
 #   TODO: implement suite of proposals... 
-#         fischer jump, prior draw, ???
+#         fisher jump, prior draw, ???
     Gb = Ga.copy()
     # random direction, gaussian 1-sigma jump
     for i in range(Ga.shape[0]):
@@ -99,7 +141,7 @@ def proposal(Ga):
     return (Gb, dlogQ)
 
 ##### BEGIN MAIN #####
-infile_name, outfile_name, number, SEED = parse_options(sys.argv[1:])
+infile_name, outfile_name, number, burn, SEED = parse_options(sys.argv[1:])
 
 rand.seed(SEED)
 
@@ -121,8 +163,12 @@ logLmax = log_L(M,Minv)
 N = number   # number o' MCMC samples
 acc = 0
 
-chainfile = open('chain.dat','w') # flushes chain.dat ... TODO: better
-chainfile.close()
+val,vec = fisher(M,Ga)
+print( val[0]*vec[0,:,:] )
+print( val[15]*vec[15,:,:] )
+sys.exit()
+
+chain_file = open('chain.dat','wb')
 
 t_start = time.clock()
 
@@ -150,12 +196,11 @@ for n in range(N):
             Minv = Ga.copy()
             logLmax = logLa
 
-#TODO: open file once and leave open ... will buffers speed things up?
-#    with open('chain.dat', 'ab') as chain_file:
-#        tmp = np.hstack( ([[n]], [[logLa]], (Ga.copy()).reshape(1,Ga.size)) )
-#        np.savetxt(chain_file, tmp, fmt='%+.8e', newline=' ')
-#        chain_file.write(b'\n')
+    tmp = np.hstack( ([[n]], [[logLa]], (Ga.copy()).reshape(1,Ga.size)) )
+    np.savetxt(chain_file, tmp, fmt='%+.8e')
+
 # end for
+chain_file.close()
 
 t_end = time.clock()
 
