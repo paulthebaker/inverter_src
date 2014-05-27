@@ -63,9 +63,6 @@ N = number   # number o' MCMC samples
 acc = 0
 
 F = mmi.types.Fisher(M,Ga)
-#print( F.val[0]*F.vec[0,:,:] )
-#print( F.val[15]*F.vec[15,:,:] )
-#sys.exit()
 
 chain_file = open('chain.dat','wb')
 
@@ -77,7 +74,7 @@ for n in range(N):
         # update fisher matrix eigen directions
         F.update(M,Ga)
 
-    Gb, dlogQ = mmi.prop.proposal(Ga)
+    Gb, dlogQ = mmi.prop.proposal(Ga, F)
 
     # compute logL and Hastings Ratio
     logLb = log_L(M,Gb)
@@ -119,14 +116,32 @@ print("acceptance = %.4f"%( float(acc)/float(N) ))
 print("")
 print("max logL =", logLmax)
 print("")
+
 np.set_printoptions(precision=4)
 print("M =") 
 print(rawM)
 print("")
+
+I = np.dot(rawM,rawMinv)
+print("M*Minv =")
+print(I)
+print("")
+
 print("Minv =") 
 print(rawMinv)
 print("")
-print("M*Minv =")
-print(np.dot(rawM,rawMinv))
+
+MinvTRUE = np.linalg.inv(rawM)
+print("Minv TRUE =") 
+print(MinvTRUE)
 print("")
+
+# TODO: fast fitting factor computation assumes no noise in data
+HtHt = rawM.shape[0]
+HmHm = sum(sum( I*I ))
+HtHm = np.trace(I)
+FF = HtHm/np.sqrt(HtHt*HmHm)
+print("fitting factor = %.4f"%(FF))
+print("")
+
 
