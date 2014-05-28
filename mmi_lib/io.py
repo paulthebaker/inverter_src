@@ -16,7 +16,7 @@ def parse_options(argv):
     outputfile = 'mat_out.dat'
     seed = None
     number = 10000
-    burn = int(number/10)
+    burn = int(number/5)
     try:
         opts, args = getopt.getopt(
                          argv,
