@@ -68,7 +68,7 @@ chain_file = open('chain.dat','wb')
 
 t_start = time.clock()
 
-for n in range(N):
+for n in range(-burn, N):
     # MCMC LOOP
     if (n%1000)==0:
         # update fisher matrix eigen directions
@@ -85,7 +85,7 @@ for n in range(N):
     if ( n%1000 == 0 ):  # print progress to stdout
         print(
               "n:%d :  logL = %.4f,  logH = %.4f,  b = %.4f,  acc = %.4f"
-              %(n, logLa, logH, b, float(acc)/float(n+1) )
+              %(n, logLa, logH, b, float(acc)/float(n+burn+1) )
              )
 
     if ( logH >= b ):  # accept proposal ... (b) -> (a)
@@ -95,9 +95,10 @@ for n in range(N):
         if ( logLa > logLmax ):  # new best fit (maximum likelihood)
             Minv = Ga.copy()
             logLmax = logLa
-
-    tmp = np.hstack( ([[n]], [[logLa]], (Ga.copy()).reshape(1,Ga.size)) )
-    np.savetxt(chain_file, tmp, fmt='%+.8e')
+    
+    if ( n>=0 ):  # only save chain after burn-in
+        tmp = np.hstack( ([[n]], [[logLa]], (Ga.copy()).reshape(1,Ga.size)) )
+        np.savetxt(chain_file, tmp, fmt='%+.8e')
 
 # end for
 chain_file.close()
