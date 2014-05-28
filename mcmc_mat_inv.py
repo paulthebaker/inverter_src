@@ -97,7 +97,7 @@ for n in range(-burn, N):
             logLmax = logLa
     
     if ( n>=0 ):  # only save chain after burn-in
-        tmp = np.hstack( ([[n]], [[logLa]], (Ga.copy()).reshape(1,Ga.size)) )
+        tmp = np.hstack( ([[n]], [[logLa]], scale*(Ga.copy()).reshape(1,Ga.size)) )
         np.savetxt(chain_file, tmp, fmt='%+.8e')
 
 # end for
