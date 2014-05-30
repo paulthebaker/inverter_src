@@ -22,27 +22,15 @@ import mmi_lib as mmi
 
 import time
 import numpy as np
-import random as rand
 
 #TODO: for speedup use cython and gpl C libraries... or maybe Pypy
-
-log2P = np.log(2.0*np.pi)
-
-
-def log_L(M, G):
-    """compute logL for a Guess"""
-    # TODO HARDCODED: sigma=0.1
-    sigsq = (0.01)
-    Id = np.identity(M.shape[0],float)
-    R = np.dot(M,G) - Id
-    return -0.5*( R.size*log2P + sum(sum(R*R/2.0))/sigsq ) # R*R is element by element product
 
 
 
 ##### BEGIN MAIN #####
 infile_name, outfile_name, number, burn, SEED = mmi.io.parse_options(sys.argv[1:])
 
-rand.seed(SEED)
+np.random.seed(SEED)
 
 rawM = mmi.io.get_Mat(infile_name)
 detM = np.linalg.det(rawM)
@@ -55,9 +43,10 @@ M = scale*rawM.copy()  # scale so det(M)=1
 # initialize MCMC
 # let (a) be current state, (b) be proposed new state
 Ga = np.identity(M.shape[0],float)  # first guess is I
-logLa = log_L(M,Ga)
+logLa = mmi.hasting.log_L(M,Ga)
+logPa = mmi.hasting.log_P(Ga)
 Minv = Ga.copy()         # init best fit Minv to first guess
-logLmax = log_L(M,Minv)
+PDFmax = logLa + logPa
 
 N = number   # number o' MCMC samples
 acc = 0
@@ -76,11 +65,15 @@ for n in range(-burn, N):
 
     Gb, dlogQ = mmi.prop.proposal(Ga, F)
 
-    # compute logL and Hastings Ratio
-    logLb = log_L(M,Gb)
-    logH = logLb - logLa + dlogQ
+    # compute logL, logP, and Hastings Ratio
+    logLb = mmi.hasting.log_L(M,Gb)
+    logPb = mmi.hasting.log_P(Gb)
+    dlogL = logLb - logLa
+    dlogP = logPb - logPa
+    
+    logH = dlogL + dlogP - dlogQ
 
-    b = np.log(rand.random())
+    b = np.log(np.random.random())
 
     if ( n%1000 == 0 ):  # print progress to stdout
         print(
@@ -92,9 +85,10 @@ for n in range(-burn, N):
         Ga = Gb.copy()
         logLa = logLb
         acc = acc + 1
-        if ( logLa > logLmax ):  # new best fit (maximum likelihood)
+        PDF = logLa + logPa
+        if ( PDF > PDFmax ):  # new best fit (maximum posterior)
             Minv = Ga.copy()
-            logLmax = logLa
+            PDFmax = PDF
     
     if ( n>=0 ):  # only save chain after burn-in
         tmp = np.hstack( ([[n]], [[logLa]], scale*(Ga.copy()).reshape(1,Ga.size)) )
@@ -115,7 +109,7 @@ print("MCMC runtime: %.4f sec"%(t_end-t_start))
 print("")
 print("acceptance = %.4f"%( float(acc)/float(N) ))
 print("")
-print("max logL =", logLmax)
+print("max logPDF =", PDFmax)
 print("")
 
 np.set_printoptions(precision=4)
