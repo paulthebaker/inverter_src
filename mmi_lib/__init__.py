@@ -1,5 +1,5 @@
 
-__all__ = ["io", "prop"]
+__all__ = ["io", "types", "hasting", "prop"]
 
 import mmi_lib.types
 import mmi_lib.io
