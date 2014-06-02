@@ -33,8 +33,6 @@ def proposal(Ga, F):
     return new state (Gb) and proposal density (dlogQ) for Hastings Ratio
     dlogQ = logQb - logQa, same as dP and dL: subtracted in HR
     """
-#   TODO: implement suite of proposals... 
-#         prior draw, ???
     test = np.random.random()
     if test<0.05:
         Gb, dlogQ = prior(Ga)
