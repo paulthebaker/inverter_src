@@ -47,3 +47,5 @@ class Fisher:
         """initialize Fisher matrix"""
         self.update(M,G)
 
+#TODO: implement guess as class (state?), proposal and hasting stuff are methods
+
