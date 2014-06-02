@@ -84,6 +84,7 @@ for n in range(-burn, N):
     if ( logH >= b ):  # accept proposal ... (b) -> (a)
         Ga = Gb.copy()
         logLa = logLb
+        logPa = logPb
         acc = acc + 1
         PDF = logLa + logPa
         if ( PDF > PDFmax ):  # new best fit (maximum posterior)
@@ -107,7 +108,7 @@ mmi.io.print_Mat(rawMinv, outfile_name)
 print("")
 print("MCMC runtime: %.4f sec"%(t_end-t_start))
 print("")
-print("acceptance = %.4f"%( float(acc)/float(N) ))
+print("acceptance = %.4f"%( float(acc)/float(N+burn) ))
 print("")
 print("max logPDF =", PDFmax)
 print("")
