@@ -43,8 +43,8 @@ M = scale*rawM.copy()  # scale so det(M)=1
 # initialize MCMC
 # let (a) be current state, (b) be proposed new state
 Ga = np.identity(M.shape[0],float)  # first guess is I
-logLa = mmi.hasting.log_L(M,Ga)
-logPa = mmi.hasting.log_P(Ga)
+logLa = mmi.prop.log_L(M,Ga)
+logPa = mmi.prop.log_P(Ga)
 Minv = Ga.copy()         # init best fit Minv to first guess
 PDFmax = logLa + logPa
 
@@ -66,8 +66,8 @@ for n in range(-burn, N):
     Gb, dlogQ = mmi.prop.proposal(Ga, F)
 
     # compute logL, logP, and Hastings Ratio
-    logLb = mmi.hasting.log_L(M,Gb)
-    logPb = mmi.hasting.log_P(Gb)
+    logLb = mmi.prop.log_L(M,Gb)
+    logPb = mmi.prop.log_P(Gb)
     dlogL = logLb - logLa
     dlogP = logPb - logPa
     
