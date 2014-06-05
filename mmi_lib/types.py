@@ -1,6 +1,6 @@
 
 # types.py
-# class for mat_inv.py
+# classes for mat_inv.py
 #
 # (c) 2014 Paul T. Baker, bakerp@geneseo.edu
 # licence: GNU GPLv3 <http://www.gnu.org/licenses/gpl.txt>
@@ -46,6 +46,4 @@ class Fisher:
     def __init__(self,M,G):
         """initialize Fisher matrix"""
         self.update(M,G)
-
-#TODO: implement guess as class (state?), proposal and hasting stuff are methods
 
