@@ -14,19 +14,58 @@ reads in a chainfile and histograms everything!
 """
 
 import sys
+import getopt
 import mmi_lib as mmi
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+def parse_options(argv):
+    """command line parser"""
+    mat_infile = 'mat_in.dat'
+    mat_outfile = 'mat_out.dat'
+    chainfile = 'chain.dat'
+    try:
+        opts, args = getopt.getopt(
+                         argv,
+                         "hi:o:c:",
+                         ["help","ifile=","ofile=","cfile="]
+                     )
+    except getopt.GetoptError:
+        print('  ERROR: invalid options, try --help for more info')
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt in ('-h',"--help"):
+            print('hist_mat_inv.py [OPTIONS]')
+            print('')
+            print('  options:')
+            print('')
+            print('   --help, -h                   display this message and exit')
+            print('')
+            print('   --ifile, -i <input_file>     input square matrix to invert')
+            print('   --ofile, -o <output_file>    output best fit inverse')
+            print('   --cfile, -c <chain_file>     chain file output by MCMC')
+            print('')
+            sys.exit()
+        elif opt in ("-i", "--ifile"):
+            mat_infile = arg
+        elif opt in ("-o", "--ofile"):
+            mat_outfile = arg
+        elif opt in ("-c", "--cfile"):
+            chainfile = arg
+    return (mat_infile, mat_outfile, chainfile )
+
+
 ##### BEGIN MAIN #####
 
-#TODO: filenames hardcoded...
-chain = np.loadtxt("chain.dat")
-mat_in = mmi.io.get_Mat("mat_in.dat")
-mat_out = mmi.io.get_Mat("mat_out.dat").flatten()
+infile_name, outfile_name, chainfile_name = parse_options(sys.argv[1:])
+chain = np.loadtxt(chainfile_name)
+mat_in = mmi.io.get_Mat(infile_name)
+mat_out = mmi.io.get_Mat(outfile_name)
 
-mat_inv = np.linalg.inv(mat_in).flatten()
+inv_best = mat_out.flatten()
+inv_true = np.linalg.inv(mat_in).flatten()
 
 n, logL, mat = np.array_split(chain, [1,2], 1)
 
@@ -53,13 +92,13 @@ for i in range(N):
     plt.subplot(n, n, i+1)
     plt.hist(mat[:,i], bins=20, normed=True, log=False,
              alpha=0.5, facecolor='blue')
-    plt.axvline(mat_out[i], linewidth=2, color='blue')
-    plt.axvline(mat_inv[i], linewidth=2, color='red')
+    plt.axvline(inv_best[i], linewidth=2, color='blue')
+    plt.axvline(inv_true[i], linewidth=2, color='red')
     plt.grid(True, 'major')
     plt.ylim([0, 12])
     w = 0.25
-    mn = mat_inv[i] - w
-    mx = mat_inv[i] + w
+    mn = inv_true[i] - w
+    mx = inv_true[i] + w
     plt.xlim([mn, mx])
     
     if (i%n == 0):
