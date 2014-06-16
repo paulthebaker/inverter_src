@@ -11,7 +11,7 @@
 #
 
 """
-the likelihood for the MCMC goes like exp(R.R/2) where R is the residual S-H
+the likelihood for the MCMC goes like exp(-R.R/2) where R is the residual S-H
 our data, S, is the identity matrix
 our model, H, is the matrix product of the input matrix M and the current guess G
 each matrix is treated like a vector of the N*N entries
