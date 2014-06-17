@@ -39,7 +39,7 @@ def parse_options(argv):
             print('')
             print('   --seed, -s <seed>            seed to initialize random()')
             print('   --number, -n <number>        number of samples in MCMC')
-            print('   --burn-in, -b <N_burn>       length of burn in')
+            print('   --burn, -b <N_burn>       length of burn in')
             print('')
             sys.exit()
         elif opt in ("-i", "--ifile"):
@@ -50,7 +50,7 @@ def parse_options(argv):
             seed = int(arg)
         elif opt in ("-n", "--number"):
             number = int(arg)
-        elif opt in ("-b", "--burn-in"):
+        elif opt in ("-b", "--burn"):
             burn = int(arg)
     return (inputfile, outputfile, number, burn, seed)
 
