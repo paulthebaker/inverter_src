@@ -12,8 +12,8 @@ def logPDF(x, M, sigL, sigP):
     Id = np.identity(n,float)
 
     R = np.dot(M,G) - Id
-    logL = -0.5*( R.size*(log2P+np.log(sigL)) + sum(sum(R*R))/(sigL*sigL) )
-    logP = -0.5*( G.size*(log2P+np.log(sigP)) + sum(sum(G*G))/(sigP*sigP) )
+    logL = -0.5*( R.size*(log2P+np.log(sigL)) + np.sum(R*R)/(sigL*sigL) )
+    logP = -0.5*( G.size*(log2P+np.log(sigP)) + np.sum(G*G)/(sigP*sigP) )
 
     logPDF = logL + logP
     return logPDF
