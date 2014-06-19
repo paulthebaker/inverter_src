@@ -134,7 +134,7 @@ print("")
 
 # TODO: fast fitting factor computation assumes no noise in data
 HtHt = rawM.shape[0]
-HmHm = sum(sum( I*I ))
+HmHm = np.sum( I*I )
 HtHm = np.trace(I)
 FF = HtHm/np.sqrt(HtHt*HmHm)
 print("fitting factor = %.4f"%(FF))

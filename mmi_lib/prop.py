@@ -16,14 +16,14 @@ def log_L(M, G):
     sigsq = (0.01)
     Id = np.identity(M.shape[0],float)
     R = np.dot(M,G) - Id
-    return -0.5*( R.size*log2P + sum(sum(R*R))/sigsq ) # R*R is element by element product
+    return -0.5*( R.size*log2P + np.sum(R*R)/sigsq ) # R*R is element by element product
 
 
 def log_P(G):
     """compute gaussian prior mean=0, stdev=5"""
     #TODO: hard coded stdev=5
     sig = 5.0
-    logP = -0.5*( G.size*(log2P+log5) + sum(sum(G*G))/(sig*sig) )
+    logP = -0.5*( G.size*(log2P+log5) + np.sum(G*G)/(sig*sig) )
     return logP
 
 
