@@ -11,12 +11,13 @@ log2P = np.log(2.0*np.pi)
 log5 = np.log(5.0)
 
 def log_L(M, G):
-    """compute logL for a Guess"""
-    # TODO HARDCODED: sigma=0.1
-    sigsq = (0.01)
-    Id = np.identity(M.shape[0],float)
-    R = np.dot(M,G) - Id
-    return -0.5*( R.size*log2P + np.sum(R*R)/sigsq ) # R*R is element by element product
+	"""compute logL for a Guess"""
+	# TODO HARDCODED: sigma=0.1
+	sigsq = (0.01)
+	Id = np.identity(M.shape[0],float)
+	Ga = G.reshape((M.shape[0],M.shape[1]))
+	R = np.dot(M,Ga) - Id
+	return -0.5*( R.size*log2P + np.sum(R*R)/sigsq ) # R*R is element by element product
 
 
 def log_P(G):
