@@ -16,16 +16,18 @@ def parse_options(argv):
     outputfile = 'mat_out.dat'
     guessfile = None
     seed = None
-    number = 10000
+    number = 100
     burn = int(number/5)
+    walk = 100
+    mpi = False
     try:
         opts, args = getopt.getopt(
                          argv,
-                         "hi:o:g:s:n:b:",
-                         ["help",
-                          "ifile=","ofile=","gfile=",
+                         "hi:o:s:n:b:w:p",
+                         ["help", "ifile=", "ofile=",
                           "seed=",
-                          "number=","burn-in"]
+                          "number=", "burn", "walk",
+                          "MPI"]
                      )
     except getopt.GetoptError:
         print('  ERROR: invalid options, try --help for more info')
@@ -44,8 +46,12 @@ def parse_options(argv):
             print('                                   defaults to draw from prior')
             print('')
             print('   --seed, -s <seed>            seed to initialize random()')
+            print('')
             print('   --number, -n <number>        number of samples in MCMC')
-            print('   --burn, -b <N_burn>       length of burn in')
+            print('   --burn, -b <N_burn>          length of burn in')
+            print('   --walk, -w <N_walk>          number of walkers in ensemble')
+            print('')
+            print('   --MPI, -p                    parallelize with MPI')
             print('')
             sys.exit()
         elif opt in ("-i", "--ifile"):
@@ -60,7 +66,11 @@ def parse_options(argv):
             number = int(arg)
         elif opt in ("-b", "--burn"):
             burn = int(arg)
-    return (inputfile, outputfile, guessfile, number, burn, seed)
+        elif opt in ("-w", "--walk"):
+            walk = int(arg)
+        elif opt in ("-p", "--MPI"):
+            mpi = True
+    return (inputfile, outputfile, number, burn, walk, seed, mpi)
 
 
 def get_Mat(filename):
@@ -72,8 +82,12 @@ def get_Mat(filename):
     return mat
 
 
-def print_Mat(mat,filename):
+def print_Mat(mat, filename):
     """print a matrix to file"""
     np.savetxt(filename, mat, fmt='%+.9e')
 
+
+def print_chain(chain ,filename):
+    """print MCMC samples to chain_file"""
+    np.savetxt(filename, chain, fmt='%+.9e')
 
