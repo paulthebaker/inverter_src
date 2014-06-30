@@ -36,10 +36,10 @@ M = scale*rawM.copy()  # scale so det(M)=1
 
 #define the parameters for the ensemble sampler
 numDim = rawM.shape[0]*rawM.shape[1] #the number of elements in the matrix, and the number of dimensions for the walker
-numWalk = numDim*3 #start out with three for each element
+numWalk = numDim*100 #start out with 100 for each element
 
-Ga = np.array(np.identity(M.shape[0],float))  # first guess is II
-Ga = Ga.reshape((1,numDim)) # convert guess into coordinate vector
+#pick starting positions for each walker
+Ga = np.random.normal(0,1,(numWalk,numDim)) #draw from a Gaussian with stdev 1 mean 0, as matrix is normalized, third arg gives shape of output array
 
 #define the target function, the log of the posterior (logPrior + logLikelihood)
 def log_Post(G, Mat): #note argument syntax, takes guess first as required by em. Also note that G is a vector, Mat is a matrix
@@ -49,21 +49,23 @@ def log_Post(G, Mat): #note argument syntax, takes guess first as required by em
 sampler = em.EnsembleSampler(numWalk, numDim, log_Post, args = [M])
 
 #burn-in
-sampler.run_mcmc(Ga, 1)
+burn_in = sampler.run_mcmc(Ga, burn)
 sampler.reset()
 
 #run sampler
-sampler.run_mcmc(Ga, number)
+sampler.run_mcmc(burn_in[0], number)
 
-#takes output and converts to best guess, for now just last step
-Minv = sampler.flatchain[numWalk*number]
-#reshape as a matrix
-Minv = Minv.reshape((M.shape[0],M.shape[1]))
+#takes the median in each element as the best guess matrix
+samples = sampler.flatchain #convert samples to flattened array
+
+values = np.array(zip(*np.percentile(samples, [50], axis=0))) #takes median in each direction of space from unzipped percentile array
+
+Minv = values.reshape((M.shape[0],M.shape[1])) #returns the inverse matrix
 
 # write rescaled Minv to file
 rawMinv = scale*Minv.copy()
 mmi.io.print_Mat(rawMinv, outfile_name)
-
+ 
 np.set_printoptions(precision=4)
 print("M =") 
 print(rawM)
@@ -90,5 +92,3 @@ HtHm = np.trace(I)
 FF = HtHm/np.sqrt(HtHt*HmHm)
 print("fitting factor = %.4f"%(FF))
 print("")
-
-
