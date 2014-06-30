@@ -35,34 +35,77 @@ x0 = np.random.normal(size=nwalkers*ndim).reshape((nwalkers, ndim))
 print(x0)
 
 burn = 100
-N = 1000
+N = 100
 
-pool = MPIPool()
-if not pool.is_master():
-    pool.wait()
-    sys.exit(0)
+#pool = MPIPool()
+#if not pool.is_master():
+#    pool.wait()
+#    sys.exit(0)
 
 # initialize MCMC
 MCMC = emcee.EnsembleSampler(nwalkers, ndim, logPDF, args=[mat, sigL, sigP])
 
+print(" begin burn-in")
 # burn in
 pos, prob, state = MCMC.run_mcmc(x0, burn)
 MCMC.reset()
 
+print(" begin MCMC")
 # actual run
 MCMC.run_mcmc(pos, N)
 
-pool.close()
+#pool.close()
 
-import matplotlib.pyplot as pl
+print(" end of run bookkeeping...")
+result = np.array( list( map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),
+              zip(*np.percentile(samp, [16, 50, 84], axis=0))) ))
+med = result.reshape(3,Ndim)[0,:]
+plus = result.reshape(3,Ndim)[1,:]
+minus = result.reshape(3,Ndim)[2,:]
 
-print("Mean acceptance fraction: {0:.3f}"
-                        .format(np.mean(MCMC.acceptance_fraction)))
+# write chain to file
+mmi.io.print_chain(samp, 'chain.dat')
 
-for i in range(ndim):
-        pl.figure()
-        pl.hist(MCMC.flatchain[:,i], 100, color="k", histtype="step")
-        pl.title("Dimension {0:d}".format(i))
+# write rescaled Minv to file
+Minv = med.reshape(n,n)
+MinvP = plus.reshape(n,n)
+MinvM = minus.reshape(n,n)
 
-        pl.show()
+rawMinv = Minv.copy()
+#mmi.io.print_Mat(rawMinv, outfile_name)
+
+# print stuff to command line
+print("")
+print("MCMC runtime: %.4f sec"%(t_end-t_start))
+print("")
+print("Mean acceptance: {0:.4f}"
+                        .format(np.mean(eMCMC.acceptance_fraction)))
+print("")
+
+np.set_printoptions(precision=4)
+print("M =") 
+print(rawM)
+print("")
+
+I = np.dot(rawM,rawMinv)
+print("M*Minv =")
+print(I)
+print("")
+
+print("Minv =") 
+print(rawMinv)
+print("")
+
+MinvTRUE = np.linalg.inv(rawM)
+print("Minv TRUE =") 
+print(MinvTRUE)
+print("")
+
+# TODO: fast fitting factor computation assumes no noise in data
+HtHt = rawM.shape[0]
+HmHm = np.sum( I*I )
+HtHm = np.trace(I)
+FF = HtHm/np.sqrt(HtHt*HmHm)
+print("fitting factor = %.4f"%(FF))
+print("")
 
