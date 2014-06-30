@@ -23,99 +23,92 @@ import mmi_lib as mmi
 import time
 import numpy as np
 
-#TODO: for speedup use cython and gpl C libraries... or maybe Pypy
+import emcee
+from emcee.utils import MPIPool
 
+
+def logPDF(x, M, sigL, sigP):
+    """compute log posterior from 1xn^2 param vector"""
+    n = M.shape[0]
+    G = x.reshape(n,n).copy()
+    Id = np.identity(n,float)
+
+    R = np.dot(M,G) - Id
+    logL = -0.5 * np.sum(R*R)/(sigL*sigL)
+    logP = -0.5 * np.sum(G*G)/(sigP*sigP)
+
+    logPDF = logL + logP
+    return logPDF
 
 
 ##### BEGIN MAIN #####
-infile_name, outfile_name, gsfile_name, number, burn, SEED = mmi.io.parse_options(sys.argv[1:])
+infile_name, outfile_name, number, burn, walk, SEED, MPI = mmi.io.parse_options(sys.argv[1:])
 
 np.random.seed(SEED)
+ranS = np.random.get_state()
 
 rawM = mmi.io.get_Mat(infile_name)
 detM = np.linalg.det(rawM)
 if(detM == 0):
     print("ERROR: det[M]=0, cannot invert")
     exit(2) 
-scale = np.power(detM,-1.0/rawM.shape[0])
+n = rawM.shape[0] # matrix is nxn
+scale = np.power(detM,-1.0/n)
 M = scale*rawM.copy()  # scale so det(M)=1
 
-# initialize MCMC
-# let (a) be current state, (b) be proposed new state
-if gsfile_name:
-    Ga = mmi.io.get_Mat(gsfile_name)
-    if M.size != Ga.size:
-        print("ERROR: inverse guess must be same size as M")
-        exit(2)
-else:
-    Ga = np.identity(M.shape[0],float)  # first guess is I
-
-print("initial Guess =") 
-print(Ga)
-print()
-
-logLa = mmi.prop.log_L(M,Ga)
-logPa = mmi.prop.log_P(Ga)
-Minv = Ga.copy()         # init best fit Minv to first guess
-PDFmax = logLa + logPa
-
-print(logLa)
-print(PDFmax)
-exit(0)
-
 N = number   # number o' MCMC samples
+Nwalkers = walk
+Ndim =M.size
 acc = 0
 
-F = mmi.types.Fisher(M,Ga)
+sigL = 0.1
+sigP = 3.0
 
-chain_file = open('chain.dat','wb')
+# draw starting location from prior
+x0 = np.random.normal(scale=sigP, size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
+
+# initialize MPI pool for parallelization
+if MPI:
+    pool = MPIPool()
+    if not pool.is_master():
+        pool.wait()
+        sys.exit(0)
+
+# initialize ensemble MCMC
+eMCMC = emcee.EnsembleSampler(Nwalkers, Ndim, logPDF, args=[M, sigL, sigP])#, rstate=ranS)
 
 t_start = time.clock()
 
-for n in range(-burn, N):
-    # MCMC LOOP
-    if (n%1000)==0:
-        # update fisher matrix eigen directions
-        F.update(M,Ga)
+# burn in
+pos, prob, state = eMCMC.run_mcmc(x0, burn)
+eMCMC.reset()
 
-    Gb, dlogQ = mmi.prop.proposal(Ga, F)
-
-    # compute logL, logP, and Hastings Ratio
-    logLb = mmi.prop.log_L(M,Gb)
-    logPb = mmi.prop.log_P(Gb)
-    dlogL = logLb - logLa
-    dlogP = logPb - logPa
-    
-    logH = dlogL + dlogP - dlogQ
-
-    b = np.log(np.random.random())
-
-    if ( n%1000 == 0 ):  # print progress to stdout
-        print(
-              "n:%d :  logL = %.4f,  logP = %.4f,  acc = %.4f"
-              %(n, logLa, logPa, float(acc)/float(n+burn+1) )
-             )
-
-    if ( logH >= b ):  # accept proposal ... (b) -> (a)
-        Ga = Gb.copy()
-        logLa = logLb
-        logPa = logPb
-        acc = acc + 1
-        PDF = logLa + logPa
-        if ( PDF > PDFmax ):  # new best fit (maximum posterior)
-            Minv = Ga.copy()
-            PDFmax = PDF
-    
-    if ( n>=0 ):  # only save chain after burn-in
-        tmp = np.hstack( ([[n]], [[logLa]], scale*(Ga.copy()).reshape(1,Ga.size)) )
-        np.savetxt(chain_file, tmp, fmt='%+.8e')
-
-# end for
-chain_file.close()
+# actual run
+eMCMC.run_mcmc(pos, N)
+>>>>>>> use ensemble sampler
 
 t_end = time.clock()
 
+# close MPI pool
+if MPI:
+    pool.close()
+
+# get median for each param
+samp = eMCMC.chain.reshape((-1, Ndim))
+result = np.array( list( map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),
+              zip(*np.percentile(samp, [16, 50, 84], axis=0))) ))
+med = result.reshape(3,Ndim)[0,:]
+plus = result.reshape(3,Ndim)[1,:]
+minus = result.reshape(3,Ndim)[2,:]
+
+# write chain to file
+mmi.io.print_chain(samp, 'chain.dat')
+
 # write rescaled Minv to file
+Minv = med.reshape(n,n)
+MinvP = plus.reshape(n,n)
+MinvM = minus.reshape(n,n)
+
 rawMinv = scale*Minv.copy()
 mmi.io.print_Mat(rawMinv, outfile_name)
 
@@ -123,9 +116,8 @@ mmi.io.print_Mat(rawMinv, outfile_name)
 print("")
 print("MCMC runtime: %.4f sec"%(t_end-t_start))
 print("")
-print("acceptance = %.4f"%( float(acc)/float(N+burn) ))
-print("")
-print("max logPDF =", PDFmax)
+print("Mean acceptance: {0:.4f}"
+                        .format(np.mean(eMCMC.acceptance_fraction)))
 print("")
 
 np.set_printoptions(precision=4)
