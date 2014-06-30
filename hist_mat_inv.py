@@ -10,7 +10,7 @@
 #
 
 """
-reads in a chainfile and histograms everything!
+reads in two chainfiles and histograms everything!
 """
 
 import sys
@@ -25,7 +25,7 @@ def parse_options(argv):
     """command line parser"""
     mat_infile = 'mat_in.dat'
     mat_outfile = 'mat_out.dat'
-    chainfile = 'chain.dat'
+    rawchainfile = 'raw_chain.dat'
     try:
         opts, args = getopt.getopt(
                          argv,
@@ -41,11 +41,11 @@ def parse_options(argv):
             print('')
             print('  options:')
             print('')
-            print('   --help, -h                   display this message and exit')
+            print('   --help, -h                       display this message and exit')
             print('')
-            print('   --ifile, -i <input_file>     input square matrix to invert')
-            print('   --ofile, -o <output_file>    output best fit inverse')
-            print('   --cfile, -c <chain_file>     chain file output by MCMC')
+            print('   --ifile, -i <input_file>         input square matrix to invert')
+            print('   --ofile, -o <output_file>        output best fit inverse')
+            print('   --cfile, -c <chain_file>         chain file output by MCMC')
             print('')
             sys.exit()
         elif opt in ("-i", "--ifile"):
@@ -67,23 +67,26 @@ mat_out = mmi.io.get_Mat(outfile_name)
 inv_best = mat_out.flatten()
 inv_true = np.linalg.inv(mat_in).flatten()
 
-n, logL, mat = np.array_split(chain, [1,2], 1)
+index, logL, mat = np.array_split(chain, [1,2], 1)
 
 #logL_hist, tmp_bin = np.histogram(logL, bins=50, density=True)
 #logL_bin = np.delete(tmp_bin, tmp_bin.size-1)
 
-#TODO: maybe use matplotlib until I figure out gnuplot.py or similar...
+open('plots_logPost_hist.pdf','w')
+
+#logPost histogram
 plt.figure(1)
 plt.grid(True, 'major')
-plt.title('Histogram of log(L)')
-plt.xlabel('log(L)')
+plt.title('Histogram of log(Post)')
+plt.xlabel('log(Post)')
 plt.ylabel('Probability')
 n, bins, patch = plt.hist(logL, bins=50, normed=True, log=False,
                           alpha=0.5, facecolor='red')
 
-plt.savefig('plots/logL_hist.pdf')
+plt.savefig('plotslogPost_hist.pdf')
 
-
+#histogram for each matrix element
+open('plots_mat_inv_hist.pdf','w')
 plt.figure(2)
 plt.suptitle('Histograms of inverse matrix elements', fontsize=20)
 N = mat.shape[1]
@@ -116,5 +119,13 @@ for i in range(N):
     plt.subplots_adjust(hspace=0.25, wspace=0.20,
                         left=0.08, right=0.95, top=None, bottom=None)
 
-plt.savefig('plots/matinv_hist.pdf')
+plt.savefig('plotsmatinv_hist.pdf')
 
+#logPost chain plot
+open('logPost_chain_plot.pdf','w')
+plt.figure(3)
+plt.title('Chain plot for logPost')
+plt.xlabel('Iteration')
+plt.ylabel('logPost')
+plt.plot(index, logL)
+plt.savefig('logPost_chain_plot.pdf')

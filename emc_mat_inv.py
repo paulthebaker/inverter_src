@@ -22,6 +22,7 @@ import mmi_lib as mmi
 import time
 import numpy as np
 import emcee as em
+import matplotlib.pyplot as pl
 
 ##### BEGIN MAIN #####
 infile_name, outfile_name, number, burn, SEED = mmi.io.parse_options(sys.argv[1:])
@@ -36,7 +37,7 @@ M = scale*rawM.copy()  # scale so det(M)=1
 
 #define the parameters for the ensemble sampler
 numDim = rawM.shape[0]*rawM.shape[1] #the number of elements in the matrix, and the number of dimensions for the walker
-numWalk = numDim*100 #start out with 100 for each element
+numWalk = 256 #why not?
 
 #pick starting positions for each walker
 Ga = np.random.normal(0,1,(numWalk,numDim)) #draw from a Gaussian with stdev 1 mean 0, as matrix is normalized, third arg gives shape of output array
@@ -57,9 +58,7 @@ sampler.run_mcmc(burn_in[0], number)
 
 #takes the median in each element as the best guess matrix
 samples = sampler.flatchain #convert samples to flattened array
-
-values = np.array(zip(*np.percentile(samples, [50], axis=0))) #takes median in each direction of space from unzipped percentile array
-
+values = np.array(*np.percentile(samples, [50], axis=0)) #takes median in each direction of space from unzipped percentile array
 Minv = values.reshape((M.shape[0],M.shape[1])) #returns the inverse matrix
 
 # write rescaled Minv to file
@@ -92,3 +91,14 @@ HtHm = np.trace(I)
 FF = HtHm/np.sqrt(HtHt*HmHm)
 print("fitting factor = %.4f"%(FF))
 print("")
+
+#create chain file for logLikelihood
+print "Printing chain file..."
+chain_file = open('chain.dat','w')
+raw_samples = sampler.chain
+n = 0
+for s in range(0, number):
+	for w in range(0, numWalk):
+		temp = np.hstack( ([[n*s + w]], [[log_Post(scale*raw_samples[w,s],M)]], [scale*raw_samples[w,s]]) )
+		np.savetxt(chain_file, temp)
+		n += 1
