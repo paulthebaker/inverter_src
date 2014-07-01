@@ -105,7 +105,7 @@ for s in range(0, number):
 	for w in range(0, numWalk):
 		temp = np.hstack( ([[n*s + w]], [[log_Post(scale*raw_samples[w,s],M)]], [scale*raw_samples[w,s]]) )
 		np.savetxt(chain_file, temp)
-		n += 1
+	n *= 1
 print("")
 	
 ##### METROPOLIS-HASTINGS BEGIN #####
