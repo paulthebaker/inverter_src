@@ -38,7 +38,7 @@ class Fisher:
         # components of F
         for j in range(n*n):
             for i in range(j,n*n):
-                self.mat[i,j] = sum(sum( dh[i,:,:]*dh[j,:,:] )) # inner product
+                self.mat[i,j] = np.sum( dh[i,:,:]*dh[j,:,:] ) # inner product
         # compute eigen-stuff for Fij use lower triangle
         self.val, tmp = np.linalg.eigh(self.mat, UPLO='L')
         self.vec = tmp.reshape([n*n,n,n])
