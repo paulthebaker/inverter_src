@@ -48,7 +48,7 @@ print("")
 
 #define the target function, the log of the posterior (logPrior + logLikelihood)
 def log_Post(G, Mat): #note argument syntax, takes guess first as required by em. Also note that G is a vector, Mat is a matrix
-	return mmi.prop.log_L(Mat,G) + mmi.prop.log_P(G)
+    return mmi.prop.log_L(Mat,G) + mmi.prop.log_P(G)
 
 ##### ENSEMBLE METHOD BEGIN AND DISPLAY PRINTOUT #####
 print("Beginning Ensemble Method")
@@ -90,24 +90,26 @@ print("")
 
 # TODO: fast fitting factor computation assumes no noise in data
 HtHt = rawM.shape[0]
-HmHm = sum(sum( IEns*IEns ))
+HmHm = np.sum( IEns*IEns )
 HtHm = np.trace(IEns)
 FF = HtHm/np.sqrt(HtHt*HmHm)
 print("For the ensemble sampler, fitting factor = %.4f"%(FF))
 print("")
 
 #create chain file for logLikelihood
-print "Printing chain file for the ensemble sampler..."
-chain_file = open('ensemble_chain.dat','w')
-raw_samples = ensemble.chain
-n = 0
-for s in range(0, number):
-	for w in range(0, numWalk):
-		temp = np.hstack( ([[n*s + w]], [[log_Post(scale*raw_samples[w,s],M)]], [scale*raw_samples[w,s]]) )
-		np.savetxt(chain_file, temp)
-		n += 1
-print("")
-	
+print("Printing chain file for the ensemble sampler...")
+chain_file = open('ensemble_chain.dat','wb')
+
+n = number*numWalk
+number_col = np.array(np.arange(n)).reshape(n,1)
+logPost_col = np.array( [log_Post(scale*samples[i,:], M)
+                          for i in range(n)] ).reshape(n,1)
+
+chain_output = np.hstack( (number_col, logPost_col, scale*samples) )
+np.savetxt(chain_file, chain_output)
+chain_file.close()
+
+
 ##### METROPOLIS-HASTINGS BEGIN #####
 print("Beginning M-H Method")
 print("")
@@ -143,7 +145,6 @@ m_h = em.MHSampler(cov, numDim, log_Post, args=[M])
 burn_in2 = m_h.run_mcmc(burn_in1[0],burnMH/2)
 
 #recompute Fisher matrix one more time from current best guess values
-samples = m_h.chain
 Ga = np.array(np.percentile(samples, [50], axis=0))
 G = Ga.reshape(M.shape[0],M.shape[1])
 F.update(M,G)
@@ -174,17 +175,22 @@ print("")
 
 # TODO: fast fitting factor computation assumes no noise in data
 HtHt = rawM.shape[0]
-HmHm = sum(sum( IMH*IMH ))
+HmHm = np.sum( IMH*IMH )
 HtHm = np.trace(IMH)
 FF = HtHm/np.sqrt(HtHt*HmHm)
 print("For the MH sampler, fitting factor = %.4f"%(FF))
 print("")
 
 #create chain file for logLikelihood
-print "Printing chain file for the MH sampler..."
-chain_file = open('mh_chain.dat','w')
-raw_samples = m_h.chain
-n = 0
-for s in range(0, number):
-	temp = np.hstack( ([[s]], [[log_Post(scale*raw_samples[s],M)]], [scale*raw_samples[s]]) )
-	np.savetxt(chain_file, temp)
+print("Printing chain file for the MH sampler...")
+chain_file = open('mh_chain.dat','wb')
+
+n = numberMH
+number_col = np.array(np.arange(n)).reshape(n,1)
+logPost_col = np.array( [log_Post(scale*samples[i,:], M)
+                          for i in range(n)] ).reshape(n,1)
+
+chain_output = np.hstack( (number_col, logPost_col, scale*samples) )
+np.savetxt(chain_file, chain_output)
+
+
