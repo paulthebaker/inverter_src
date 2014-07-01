@@ -177,10 +177,6 @@ HtHt = rawM.shape[0]
 HmHm = sum(sum( IMH*IMH ))
 HtHm = np.trace(IMH)
 FF = HtHm/np.sqrt(HtHt*HmHm)
-<<<<<<< HEAD
-print("fitting factor = %.4f"%(FF))
-print("")
-=======
 print("For the MH sampler, fitting factor = %.4f"%(FF))
 print("")
 
@@ -192,4 +188,3 @@ n = 0
 for s in range(0, number):
 	temp = np.hstack( ([[s]], [[log_Post(scale*raw_samples[s],M)]], [scale*raw_samples[s]]) )
 	np.savetxt(chain_file, temp)
->>>>>>> FETCH_HEAD
