@@ -25,7 +25,7 @@ def parse_options(argv):
     """command line parser"""
     mat_infile = 'mat_in.dat'
     mat_outfile = 'mat_out.dat'
-    rawchainfile = 'raw_chain.dat'
+    chainfile = 'chain.dat'
     try:
         opts, args = getopt.getopt(
                          argv,
