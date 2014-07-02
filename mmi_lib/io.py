@@ -129,5 +129,5 @@ def print_endrun(M, Minv, dt, acc):
     HmHm = np.sum( I*I )
     HtHm = np.trace(I)
     FF = HtHm/np.sqrt(HtHt*HmHm)
-    print("fitting factor = %.4f"%(FF))
+    print("fitting factor = %.4f ... I think I'm wrong..."%(FF))
     print()
