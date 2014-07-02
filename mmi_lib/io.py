@@ -14,14 +14,18 @@ def parse_options(argv):
     """command line parser"""
     inputfile = 'mat_in.dat'
     outputfile = 'mat_out.dat'
+    guessfile = None
     seed = None
     number = 10000
     burn = int(number/5)
     try:
         opts, args = getopt.getopt(
                          argv,
-                         "hi:o:s:n:b:",
-                         ["help","ifile=","ofile=","seed=","number=","burn-in"]
+                         "hi:o:g:s:n:b:",
+                         ["help",
+                          "ifile=","ofile=","gfile=",
+                          "seed=",
+                          "number=","burn-in"]
                      )
     except getopt.GetoptError:
         print('  ERROR: invalid options, try --help for more info')
@@ -36,6 +40,8 @@ def parse_options(argv):
             print('')
             print('   --ifile, -i <input_file>     contains square matrix to invert')
             print('   --ofile, -o <output_file>    stores inverse of matrix')
+            print('   --gfile, -g <guess_file>     initial guess of inverse, if omitted')
+            print('                                   defaults to draw from prior')
             print('')
             print('   --seed, -s <seed>            seed to initialize random()')
             print('   --number, -n <number>        number of samples in MCMC')
@@ -46,13 +52,15 @@ def parse_options(argv):
             inputfile = arg
         elif opt in ("-o", "--ofile"):
             outputfile = arg
+        elif opt in ("-g", "--gfile"):
+            guessfile = arg
         elif opt in ("-s", "--seed"):
             seed = int(arg)
         elif opt in ("-n", "--number"):
             number = int(arg)
         elif opt in ("-b", "--burn"):
             burn = int(arg)
-    return (inputfile, outputfile, number, burn, seed)
+    return (inputfile, outputfile, guessfile, number, burn, seed)
 
 
 def get_Mat(filename):

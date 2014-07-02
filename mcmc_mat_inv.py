@@ -28,7 +28,7 @@ import numpy as np
 
 
 ##### BEGIN MAIN #####
-infile_name, outfile_name, number, burn, SEED = mmi.io.parse_options(sys.argv[1:])
+infile_name, outfile_name, gsfile_name, number, burn, SEED = mmi.io.parse_options(sys.argv[1:])
 
 np.random.seed(SEED)
 
@@ -42,11 +42,26 @@ M = scale*rawM.copy()  # scale so det(M)=1
 
 # initialize MCMC
 # let (a) be current state, (b) be proposed new state
-Ga = np.identity(M.shape[0],float)  # first guess is I
+if gsfile_name:
+    Ga = mmi.io.get_Mat(gsfile_name)
+    if M.size != Ga.size:
+        print("ERROR: inverse guess must be same size as M")
+        exit(2)
+else:
+    Ga = np.identity(M.shape[0],float)  # first guess is I
+
+print("initial Guess =") 
+print(Ga)
+print()
+
 logLa = mmi.prop.log_L(M,Ga)
 logPa = mmi.prop.log_P(Ga)
 Minv = Ga.copy()         # init best fit Minv to first guess
 PDFmax = logLa + logPa
+
+print(logLa)
+print(PDFmax)
+exit(0)
 
 N = number   # number o' MCMC samples
 acc = 0
@@ -77,8 +92,8 @@ for n in range(-burn, N):
 
     if ( n%1000 == 0 ):  # print progress to stdout
         print(
-              "n:%d :  logL = %.4f,  logH = %.4f,  b = %.4f,  acc = %.4f"
-              %(n, logLa, logH, b, float(acc)/float(n+burn+1) )
+              "n:%d :  logL = %.4f,  logP = %.4f,  acc = %.4f"
+              %(n, logLa, logPa, float(acc)/float(n+burn+1) )
              )
 
     if ( logH >= b ):  # accept proposal ... (b) -> (a)
