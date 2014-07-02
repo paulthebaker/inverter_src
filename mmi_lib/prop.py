@@ -10,21 +10,24 @@ import numpy as np
 log2P = np.log(2.0*np.pi)
 log5 = np.log(5.0)
 
-def log_L(M, G):
-    """compute logL for a Guess"""
-    # TODO HARDCODED: sigma=0.1
-    sigsq = (0.01)
-    Id = np.identity(M.shape[0],float)
+def log_L(G, M, sigL):
+    """compute non-normalized log likelihood for a matrix state G"""
+    n = M.shape[0]
+    Id = np.identity(n,float)
     R = np.dot(M,G) - Id
-    return -0.5*( R.size*log2P + np.sum(R*R)/sigsq ) # R*R is element by element product
+    return -0.5 * np.sum(R*R)/(sigL*sigL) # R*R is element by element product
 
+def log_P(G, sigP):
+    """compute non-normalized log prior for a matrix state G"""
+    return -0.5 * np.sum(G*G)/(sigP*sigP)
 
-def log_P(G):
-    """compute gaussian prior mean=0, stdev=5"""
-    #TODO: hard coded stdev=5
-    sig = 5.0
-    logP = -0.5*( G.size*(log2P+log5) + np.sum(G*G)/(sig*sig) )
-    return logP
+def log_PDF(x, M, sigL, sigP):
+    """compute non-normalized log posterior from 1xn^2 param vector"""
+    n = M.shape[0]
+    G = x.reshape(n,n).copy()
+    logL = log_L(G, M, sigL)
+    logP = log_P(G, sigP)
+    return logL + logP
 
 
 def proposal(Ga, F):
