@@ -91,7 +91,6 @@ eMCMC.reset()
 
 # actual run
 eMCMC.run_mcmc(pos, N)
->>>>>>> use ensemble sampler
 
 tend = time.clock()
 
@@ -99,21 +98,19 @@ tend = time.clock()
 if opts.mpi:
     pool.close()
 
-# get median for each param
+# write chain to file
 samp = eMCMC.flatchain
 post = (eMCMC.flatlnprobability).reshape(Nsamp, 1)
-result = np.array( list( map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),
-              zip(*np.percentile(samp, [16, 50, 84], axis=0))) ))
+chain = np.hstack( (post, samp) )
 
+mmi.io.print_chain(chain, opts.chainfile)
+
+# get median, uncert, and MAP
 ind_MAP = np.argmax(post)
-MAP = samp[ind_MAP,:]    # get maximum a posteriori... unused...
+MAP = samp[ind_MAP,:]
 med = np.array(*np.percentile(samp, [50], axis=0))
 plus = np.array(*np.percentile(samp, [84], axis=0)) - med
 minus = med - np.array(*np.percentile(samp, [84], axis=0))
-
-chain = np.hstack( (post, samp) )
-# write chain to file
-mmi.io.print_chain(chain, opts.chainfile)
 
 # write rescaled Minv to file
 rawMinv = scale*med.reshape(n,n)
