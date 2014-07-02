@@ -27,124 +27,103 @@ import emcee
 from emcee.utils import MPIPool
 
 
-def logPDF(x, M, sigL, sigP):
-    """compute log posterior from 1xn^2 param vector"""
-    n = M.shape[0]
-    G = x.reshape(n,n).copy()
-    Id = np.identity(n,float)
-
-    R = np.dot(M,G) - Id
-    logL = -0.5 * np.sum(R*R)/(sigL*sigL)
-    logP = -0.5 * np.sum(G*G)/(sigP*sigP)
-
-    logPDF = logL + logP
-    return logPDF
-
-
-##### BEGIN MAIN #####
-infile_name, outfile_name, number, burn, walk, SEED, MPI = mmi.io.parse_options(sys.argv[1:])
-
-np.random.seed(SEED)
-ranS = np.random.get_state()
-
-rawM = mmi.io.get_Mat(infile_name)
-detM = np.linalg.det(rawM)
-if(detM == 0):
-    print("ERROR: det[M]=0, cannot invert")
-    exit(2) 
-n = rawM.shape[0] # matrix is nxn
-scale = np.power(detM,-1.0/n)
-M = scale*rawM.copy()  # scale so det(M)=1
-
-N = number   # number o' MCMC samples
-Nwalkers = walk
-Ndim =M.size
-acc = 0
-
+# global values... add to CmdLineOpts?
 sigL = 0.1
 sigP = 3.0
 
-# draw starting location from prior
-x0 = np.random.normal(scale=sigP, size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
+##### BEGIN MAIN #####
+opts = mmi.io.CmdLineOpts(sys.argv[1:])
+
+np.random.seed(opts.seed)
+ranS = np.random.get_state()
+
+rawM = mmi.io.get_Mat(opts.inputfile)
+detM = np.linalg.det(rawM)
+n = rawM.shape[0] # matrix is nxn
+
+if detM == 0:
+    print("ERROR: det[M]=0, cannot invert")
+    exit(2)
+
+scale = np.power(np.abs(detM),-1.0/n)
+M = scale*rawM.copy()  # scale so det(M)=1
+
+N = opts.number   # number o' MCMC steps (1 sample per walker)
+B = opts.burn     # number o' burned steps
+Nwalkers = opts.walk
+Ndim = M.size
+
+Nsamp = N * Nwalkers # total number of samples in chain
+
+# get starting location
+if opts.guessfile:
+    x01 = mmi.io.get_Mat(opts.guessfile)
+    if x01.size != rawM.size:
+        print("ERROR: inverse guess must be same size as mat_in")
+        exit(2)
+    else:
+        x01 = x01.reshape(1, Ndim)
+        sig = np.amax(x01)*0.01 # random deviation is 1% of maximum element
+        dev = np.random.normal(scale=sig,
+                               size=Nwalkers*Ndim).reshape((Nwalkers,Ndim))
+        x0 = np.tile(x01, [Nwalkers, 1]) + dev
+        x0 /= scale
+else:
+    # draw starting location from prior
+    x0 = np.random.normal(scale=sigP, 
+                          size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
 
 # initialize MPI pool for parallelization
-if MPI:
+if opts.mpi:
     pool = MPIPool()
     if not pool.is_master():
         pool.wait()
         sys.exit(0)
 
 # initialize ensemble MCMC
-eMCMC = emcee.EnsembleSampler(Nwalkers, Ndim, logPDF, args=[M, sigL, sigP])#, rstate=ranS)
+eMCMC = emcee.EnsembleSampler(Nwalkers, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])#, rstate=ranS)
 
-t_start = time.clock()
+tstart = time.clock()
 
 # burn in
-pos, prob, state = eMCMC.run_mcmc(x0, burn)
+pos, prob, state = eMCMC.run_mcmc(x0, B)
 eMCMC.reset()
 
 # actual run
 eMCMC.run_mcmc(pos, N)
 >>>>>>> use ensemble sampler
 
-t_end = time.clock()
+tend = time.clock()
 
 # close MPI pool
-if MPI:
+if opts.mpi:
     pool.close()
 
 # get median for each param
-samp = eMCMC.chain.reshape((-1, Ndim))
+samp = eMCMC.flatchain
+post = (eMCMC.flatlnprobability).reshape(Nsamp, 1)
 result = np.array( list( map(lambda v: (v[1], v[2]-v[1], v[1]-v[0]),
               zip(*np.percentile(samp, [16, 50, 84], axis=0))) ))
-med = result.reshape(3,Ndim)[0,:]
-plus = result.reshape(3,Ndim)[1,:]
-minus = result.reshape(3,Ndim)[2,:]
 
+ind_MAP = np.argmax(post)
+MAP = samp[ind_MAP,:]    # get maximum a posteriori... unused...
+med = np.array(*np.percentile(samp, [50], axis=0))
+plus = np.array(*np.percentile(samp, [84], axis=0)) - med
+minus = med - np.array(*np.percentile(samp, [84], axis=0))
+
+chain = np.hstack( (post, samp) )
 # write chain to file
-mmi.io.print_chain(samp, 'chain.dat')
+mmi.io.print_chain(chain, opts.chainfile)
 
 # write rescaled Minv to file
-Minv = med.reshape(n,n)
-MinvP = plus.reshape(n,n)
-MinvM = minus.reshape(n,n)
+rawMinv = scale*med.reshape(n,n)
+rawMinvP = scale*plus.reshape(n,n)
+rawMinvM = scale*minus.reshape(n,n)
 
-rawMinv = scale*Minv.copy()
-mmi.io.print_Mat(rawMinv, outfile_name)
+mmi.io.print_Mat(rawMinv, opts.outputfile)
 
 # print stuff to command line
-print("")
-print("MCMC runtime: %.4f sec"%(t_end-t_start))
-print("")
-print("Mean acceptance: {0:.4f}"
-                        .format(np.mean(eMCMC.acceptance_fraction)))
-print("")
+acc = np.mean(eMCMC.acceptance_fraction)
+runtime = tend-tstart
 
-np.set_printoptions(precision=4)
-print("M =") 
-print(rawM)
-print("")
-
-I = np.dot(rawM,rawMinv)
-print("M*Minv =")
-print(I)
-print("")
-
-print("Minv =") 
-print(rawMinv)
-print("")
-
-MinvTRUE = np.linalg.inv(rawM)
-print("Minv TRUE =") 
-print(MinvTRUE)
-print("")
-
-# TODO: fast fitting factor computation assumes no noise in data
-HtHt = rawM.shape[0]
-HmHm = np.sum( I*I )
-HtHm = np.trace(I)
-FF = HtHm/np.sqrt(HtHt*HmHm)
-print("fitting factor = %.4f"%(FF))
-print("")
-
-
+mmi.io.print_endrun(rawM, rawMinv, runtime, acc)
