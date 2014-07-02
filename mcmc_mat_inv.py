@@ -70,7 +70,7 @@ if opts.guessfile:
         x0 /= scale
 else:
     # draw starting location from prior
-    x0 = np.random.normal(scale=sigP, 
+    x0 = np.random.normal(scale=sigP,
                           size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
 
 # initialize MPI pool for parallelization
