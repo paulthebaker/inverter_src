@@ -1,3 +1,4 @@
+*.swp
 *.pyc
 mmi_lib/*.pyc
 mmi_lib/__pycache__/*
