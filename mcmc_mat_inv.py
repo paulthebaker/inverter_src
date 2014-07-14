@@ -89,12 +89,35 @@ eMCMC = emcee.EnsembleSampler(Nwalkers, Ndim, mmi.prop.log_PDF, args=[M, sigL, s
 
 tstart = time.clock()
 
+# for this version, it will incrementally save the progress of the sampler to an external chain file instead of devouring RAM
+
 # burn in
-pos, prob, state = eMCMC.run_mcmc(x0, B)
+pos, prob, state = eMCMC.run_mcmc(x0, B, storechain=False)
 eMCMC.reset()
 
 # actual run
-eMCMC.run_mcmc(pos, N)
+logchain = open(opts.logchainfile,'w')
+matchain = open(opts.matchainfile,'w')
+
+dum_dum = []
+
+for i in range(N):
+	for step in eMCMC.sample(pos, iterations=1, storechain=False):
+		position = step[0]
+		for k in range(position.shape[0]):
+			for j in range(position.shape[1]):
+				matchain.write("%f  " % position[k,j])
+			matchain.write("\n")
+		
+		m = position[0]
+		log = mmi.prop.log_PDF(m, M, sigL, sigP)
+		logchain.write("%f \n" % log)
+		
+		dum_dum = position
+	pos = dum_dum
+
+logchain.close()
+matchain.close()
 
 tend = time.clock()
 
@@ -102,35 +125,28 @@ tend = time.clock()
 if opts.mpi:
     pool.close()
 
-# extract sample chain
-samp = (eMCMC.flatchain).reshape((Nsamp,Ndim))
-# to file, if needed
-#mmi.io.print_chain(samp, opts.matchainfile)
 
 # make convergence plot for ensemble
 print("Done with run, making plot")
-p = eMCMC.lnprobability
-post = []
-for i in range(N):
-	post.append(p[Nwalkers-1,i])
-post = np.array(post)
+post = np.loadtxt(opts.logchainfile)
 
 plt.figure(1)
 plt.title('Chain plot for logPost')
 plt.xlabel('Iteration')
 plt.ylabel('logPost')
-index = range(0,post.shape[0])
+index = range(post.shape[0])
 plt.plot(index, post, 'x')
 plt.ylim([-200,0])
 plt.xlim([0, N/2])
 plt.savefig('ensemble_logPost_chain_plot.pdf')
 
-# get median, uncert, and MAP
-ind_MAP = np.argmax(post)
-MAP = samp[ind_MAP]
-med = np.array(*np.percentile(samp, [50], axis=0))
-plus = np.array(*np.percentile(samp, [84], axis=0)) - med
-minus = med - np.array(*np.percentile(samp, [84], axis=0))
+#read in matrix chain file
+chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
+
+# get median and uncert
+med = np.array(*np.percentile(chainmat, [50], axis=0))
+plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
+minus = med - np.array(*np.percentile(chainmat, [84], axis=0))
 
 # write rescaled Minv
 rawMinv = scale*med.reshape(n,n)
@@ -144,7 +160,7 @@ rawMinv = scale*med.reshape(n,n)
 acc = np.mean(eMCMC.acceptance_fraction)
 runtime = tend-tstart
 print("The ensemble sampler yielded the following result:")
-mmi.io.print_endrun(rawM, rawMinv, runtime, acc)
+mmi.io.print_endrun(rawM, rawMinv, runtime)
 
 # initialize MPI pool for parallelization
 if opts.mpi:
@@ -157,17 +173,17 @@ if opts.mpi:
 N *= Nwalkers
 B *= Nwalkers
 
-#initialize Metropolis-Hastings MCMC
+# initialize Metropolis-Hastings MCMC
 mhMCMC = emcee.MHSampler(cov, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])
 
 tstart = time.clock()
 
-#burn-in
+# burn-in
 x0 = x01.reshape(1,Ndim)
 pos, prob, state = mhMCMC.run_mcmc(x0[0], B)
 mhMCMC.reset()
 
-#recompute covariance
+# recompute covariance
 G = pos.reshape((n,n))
 F = mmi.types.Fisher(M,G)
 cov = np.linalg.inv(F.mat)
@@ -176,7 +192,27 @@ cov = np.linalg.inv(F.mat)
 mhMCMC = emcee.MHSampler(cov, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])
 
 # actual run
-mhMCMC.run_mcmc(pos, N)
+# FOR NOW: reuse chain files
+logchain = open(opts.logchainfile,'w')
+matchain = open(opts.matchainfile,'w')
+
+dum_dum = []
+
+for i in range(N):
+	for step in mhMCMC.sample(pos, iterations=1, storechain=False):
+		position = step[0]
+		for k in range(position.shape[0]):
+			matchain.write("%f  " % position[k])
+		matchain.write("\n")
+		
+		log = mmi.prop.log_PDF(position, M, sigL, sigP)
+		logchain.write("%f \n" % log)
+		
+		dum_dum = position
+	pos = dum_dum
+
+logchain.close()
+matchain.close()
 
 tend = time.clock()
 
@@ -184,19 +220,9 @@ tend = time.clock()
 if opts.mpi:
     pool.close()
 
-# extract sample chain
-samp = mhMCMC.flatchain
-# to file, if needed
-#mmi.io.print_chain(samp, opts.matchainfile)
-
 # make convergence plot for mh
 print("Done with run, making plot")
-p = mhMCMC.lnprobability
-post = []
-for i in range(N):
-	if i%Nwalkers == 0:
-		post.append(p[i])
-post = np.array(post)
+post = np.loadtxt(opts.logchainfile)
 
 plt.figure(2)
 plt.title('Chain plot for logPost')
@@ -208,12 +234,12 @@ plt.ylim([-200,0])
 plt.xlim([0, N/Nwalkers])
 plt.savefig('mh_logPost_chain_plot.pdf')
 
-# get median, uncert, and MAP
-ind_MAP = np.argmax(post)
-MAP = samp[ind_MAP]
-med = np.array(*np.percentile(samp, [50], axis=0))
-plus = np.array(*np.percentile(samp, [84], axis=0)) - med
-minus = med - np.array(*np.percentile(samp, [84], axis=0))
+#read in matrix chain file
+chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
+
+med = np.array(*np.percentile(chainmat, [50], axis=0))
+plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
+minus = med - np.array(*np.percentile(chainmat, [84], axis=0))
 
 # write rescaled Minv
 rawMinv = scale*med.reshape(n,n)
@@ -227,4 +253,4 @@ rawMinv = scale*med.reshape(n,n)
 acc = np.mean(mhMCMC.acceptance_fraction)
 runtime = tend-tstart
 print("The Metropolis-Hastings sampler yielded the following result:")
-mmi.io.print_endrun(rawM, rawMinv, runtime, acc)
+mmi.io.print_endrun(rawM, rawMinv, runtime)
