@@ -22,55 +22,55 @@ import matplotlib.pyplot as plt
 
 
 def parse_options(argv):
-    """command line parser"""
-    mat_infile = 'mat_in.dat'
-    mat_outfile = 'mat_out.dat'
-    chainfile = 'chain.dat'
-    try:
-        opts, args = getopt.getopt(
+	"""command line parser"""
+	mat_infile = 'mat_in.dat'
+	mat_outfile = 'mat_out.dat'
+	matchainfile = 'mat_chain.dat'
+	logchainfile = 'log_chain.dat'
+	try:
+		opts, args = getopt.getopt(
                          argv,
-                         "hi:o:c:",
-                         ["help","ifile=","ofile=","cfile="]
+                         "hi:o:m:l:",
+                         ["help","ifile=","ofile=","mfile=","lfile="]
                      )
-    except getopt.GetoptError:
-        print('  ERROR: invalid options, try --help for more info')
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt in ('-h',"--help"):
-            print('hist_mat_inv.py [OPTIONS]')
-            print('')
-            print('  options:')
-            print('')
-            print('   --help, -h                   display this message and exit')
-            print('')
-            print('   --ifile, -i <input_file>     input square matrix to invert')
-            print('   --ofile, -o <output_file>    output best fit inverse')
-            print('   --cfile, -c <chain_file>     chain file output by MCMC')
-            print('')
-            sys.exit()
-        elif opt in ("-i", "--ifile"):
-            mat_infile = arg
-        elif opt in ("-o", "--ofile"):
-            mat_outfile = arg
-        elif opt in ("-c", "--cfile"):
-            chainfile = arg
-    return (mat_infile, mat_outfile, chainfile )
+	except getopt.GetoptError:
+		print('  ERROR: invalid options, try --help for more info')
+		sys.exit(2)
+	for opt, arg in opts:
+		if opt in ('-h',"--help"):
+			print('hist_mat_inv.py [OPTIONS]')
+			print('')
+			print('  options:')
+			print('')
+			print('   --help, -h                   display this message and exit')
+			print('')
+			print('   --ifile, -i <input_file>     input square matrix to invert')
+			print('   --ofile, -o <output_file>    output best fit inverse')
+			print('   --mfile, -m <matrix_chain_file>     chain file output by MCMC with each matrix guess')
+			print('   --lfile, -l <log_chain_file>     chain file output by MCMC with logPost values every numWalkers-th iteration')
+			print('')
+			sys.exit()
+		elif opt in ("-i", "--ifile"):
+			mat_infile = arg
+		elif opt in ("-o", "--ofile"):
+			mat_outfile = arg
+		elif opt in ("-m", "--mfile"):
+			matchainfile = arg
+		elif opt in ("-l", "--lfile"):
+			logchainfile = arg
+	return (mat_infile, mat_outfile, matchainfile, logchainfile)
 
 
 ##### BEGIN MAIN #####
 
-infile_name, outfile_name, chainfile_name = parse_options(sys.argv[1:])
-chain = np.loadtxt(chainfile_name)
+infile_name, outfile_name, mat_chainfile_name, log_chainfile_name = parse_options(sys.argv[1:])
+mat = np.loadtxt(mat_chainfile_name)
+logL = np.loadtxt(log_chainfile_name)
 mat_in = mmi.io.get_Mat(infile_name)
 mat_out = mmi.io.get_Mat(outfile_name)
 
 inv_best = mat_out.flatten()
 inv_true = np.linalg.inv(mat_in).flatten()
-
-n, logL, mat = np.array_split(chain, [1,2], 1)
-
-#logL_hist, tmp_bin = np.histogram(logL, bins=50, density=True)
-#logL_bin = np.delete(tmp_bin, tmp_bin.size-1)
 
 #TODO: maybe use matplotlib until I figure out gnuplot.py or similar...
 plt.figure(1)
@@ -81,13 +81,13 @@ plt.ylabel('Probability')
 n, bins, patch = plt.hist(logL, bins=50, normed=True, log=False,
                           alpha=0.5, facecolor='red')
 
-plt.savefig('plots/logL_hist.pdf')
+plt.savefig('plots_logL_hist.pdf')
 
 
 plt.figure(2)
 plt.suptitle('Histograms of inverse matrix elements', fontsize=20)
 N = mat.shape[1]
-n = np.sqrt(N)
+n = int(np.sqrt(N))
 for i in range(N):
     plt.subplot(n, n, i+1)
     plt.hist(mat[:,i], bins=20, normed=True, log=False,
@@ -116,5 +116,6 @@ for i in range(N):
     plt.subplots_adjust(hspace=0.25, wspace=0.20,
                         left=0.08, right=0.95, top=None, bottom=None)
 
-plt.savefig('plots/matinv_hist.pdf')
+plt.savefig('plots_matinv_hist.pdf')
+
 
