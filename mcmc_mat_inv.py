@@ -73,12 +73,9 @@ else:
 	x0 = np.random.normal(scale=sigP, size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
 	x01 = x0[0].reshape((n,n))
 
-# obtain covariance matrix for this starting guess
-#F = mmi.types.Fisher(M, x01)
-#cov = np.linalg.inv(F.mat)
-
-# just kidding, actually take a scaled identity matrix
-cov = (sigL / (Ndim**2) )*np.identity(Ndim)
+#obtain covariance matrix for this starting guess
+F = mmi.types.Fisher(M, x01)
+cov = np.linalg.inv(F.mat)
 
 # initialize MPI pool for parallelization
 if opts.mpi:
@@ -104,17 +101,18 @@ matchain = open(opts.matchainfile,'w')
 
 dum_dum = []
 
-for i in range(int(N/1000)):
-	for step in eMCMC.sample(pos, iterations=1000, storechain=False):
+for i in range(N):
+	for step in eMCMC.sample(pos, iterations=1, storechain=False):
 		position = step[0]
-		log = step[1]
-		#for k in range(position.shape[0]):
-		for j in range(position.shape[1]):
-			matchain.write("%f  " % position[0,j])
-		matchain.write("\n")
-
-		logchain.write("%f \n" % log[0])
-
+		for k in range(position.shape[0]):
+			for j in range(position.shape[1]):
+				matchain.write("%f  " % position[k,j])
+			matchain.write("\n")
+		
+		m = position[0]
+		log = mmi.prop.log_PDF(m, M, sigL, sigP)
+		logchain.write("%f \n" % log)
+		
 		dum_dum = position
 	pos = dum_dum
 
@@ -139,11 +137,11 @@ plt.ylabel('logPost')
 index = range(post.shape[0])
 plt.plot(index, post, 'x')
 plt.ylim([-200,0])
-plt.xlim([0,N])
+plt.xlim([0, N/2])
 plt.savefig('ensemble_logPost_chain_plot.pdf')
 
 #read in matrix chain file
-chainmat = np.loadtxt(opts.matchainfile).reshape((-1,Ndim))
+chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
 
 # get median and uncert
 med = np.array(*np.percentile(chainmat, [50], axis=0))
@@ -162,7 +160,7 @@ rawMinv = scale*med.reshape(n,n)
 acc = np.mean(eMCMC.acceptance_fraction)
 runtime = tend-tstart
 print("The ensemble sampler yielded the following result:")
-mmi.io.print_endrun(rawM, rawMinv, runtime, acc)
+mmi.io.print_endrun(rawM, rawMinv, runtime)
 
 # initialize MPI pool for parallelization
 if opts.mpi:
@@ -171,7 +169,7 @@ if opts.mpi:
         pool.wait()
         sys.exit(0)
 
-# for MH sampler, redefine run parameters to make the number of iterations equal
+#for MH sampler, redefine run parameters to make the number of iterations equal
 N *= Nwalkers
 B *= Nwalkers
 
@@ -186,12 +184,12 @@ pos, prob, state = mhMCMC.run_mcmc(x0[0], B)
 mhMCMC.reset()
 
 # recompute covariance
-#G = pos.reshape((n,n))
-#F = mmi.types.Fisher(M,G)
-#cov = np.linalg.inv(F.mat)
+G = pos.reshape((n,n))
+F = mmi.types.Fisher(M,G)
+cov = np.linalg.inv(F.mat)
 
-# initialize sampler with new cov
-#mhMCMC = emcee.MHSampler(cov, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])
+#initialize sampler with new cov
+mhMCMC = emcee.MHSampler(cov, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])
 
 # actual run
 # FOR NOW: reuse chain files
@@ -199,20 +197,17 @@ logchain = open(opts.logchainfile,'w')
 matchain = open(opts.matchainfile,'w')
 
 dum_dum = []
-num_nut = 0
 
-for i in range(int(N/(1000))):
-	for step in mhMCMC.sample(pos, iterations=1000, storechain=False):
+for i in range(N):
+	for step in mhMCMC.sample(pos, iterations=1, storechain=False):
 		position = step[0]
-
-		if num_nut % Nwalkers == 0:
-			for k in range(position.shape[0]):
-				matchain.write("%f  " % position[k])
-			matchain.write("\n")
-
-			logchain.write("%f \n" % step[1])
-
-		num_nut += 1
+		for k in range(position.shape[0]):
+			matchain.write("%f  " % position[k])
+		matchain.write("\n")
+		
+		log = mmi.prop.log_PDF(position, M, sigL, sigP)
+		logchain.write("%f \n" % log)
+		
 		dum_dum = position
 	pos = dum_dum
 
@@ -239,12 +234,12 @@ plt.ylim([-200,0])
 plt.xlim([0, N/Nwalkers])
 plt.savefig('mh_logPost_chain_plot.pdf')
 
-# read in matrix chain file
-chainmat = np.loadtxt(opts.matchainfile).reshape((-1,Ndim))
+#read in matrix chain file
+chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
 
 med = np.array(*np.percentile(chainmat, [50], axis=0))
-#plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
-#minus = med - np.array(*np.percentile(chainmat, [84], axis=0))
+plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
+minus = med - np.array(*np.percentile(chainmat, [84], axis=0))
 
 # write rescaled Minv
 rawMinv = scale*med.reshape(n,n)
@@ -258,4 +253,4 @@ rawMinv = scale*med.reshape(n,n)
 acc = np.mean(mhMCMC.acceptance_fraction)
 runtime = tend-tstart
 print("The Metropolis-Hastings sampler yielded the following result:")
-mmi.io.print_endrun(rawM, rawMinv, runtime, acc)
+mmi.io.print_endrun(rawM, rawMinv, runtime)
