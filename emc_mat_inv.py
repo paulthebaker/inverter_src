@@ -1,9 +1,9 @@
 #!/usr/bin/env python3.3
 
 #
-#    emc_mat_inv.py
+#    mcmc_mat_inv.py
 #
-# an affine invariant Markov chain Monte Carlo ensemble sampler for inverting square matrices
+# a Markov chain Monte Carlo for inverting square matrices
 #   an ongoing exercise in Python 
 #
 # (c) 2014 Paul T. Baker, bakerp@geneseo.edu
@@ -11,7 +11,7 @@
 #
 
 """
-the likelihood for the MCMC goes like exp(R.R/2) where R is the residual S-H
+the likelihood for the MCMC goes like exp(-R.R/2) where R is the residual S-H
 our data, S, is the identity matrix
 our model, H, is the matrix product of the input matrix M and the current guess G
 each matrix is treated like a vector of the N*N entries
@@ -19,76 +19,146 @@ each matrix is treated like a vector of the N*N entries
 
 import sys
 import mmi_lib as mmi
+
 import time
 import numpy as np
-import emcee as em
+import matplotlib.pyplot as plt
+
+import emcee
+from emcee.utils import MPIPool
+
+
+# global values... add to CmdLineOpts?
+sigL = 0.1
+sigP = 3.0
 
 ##### BEGIN MAIN #####
-infile_name, outfile_name, number, burn, SEED = mmi.io.parse_options(sys.argv[1:])
+opts = mmi.io.CmdLineOpts(sys.argv[1:])
 
-rawM = mmi.io.get_Mat(infile_name)
+np.random.seed(opts.seed)
+ranS = np.random.get_state()
+
+rawM = mmi.io.get_Mat(opts.inputfile)
 detM = np.linalg.det(rawM)
-if(detM == 0):
+n = rawM.shape[0] # matrix is nxn
+
+if detM == 0:
     print("ERROR: det[M]=0, cannot invert")
-    exit(2) 
-scale = np.power(detM,-1.0/rawM.shape[0])
+    exit(2)
+
+scale = np.power(np.abs(detM),-1.0/n)
 M = scale*rawM.copy()  # scale so det(M)=1
 
-#define the parameters for the ensemble sampler
-numDim = rawM.shape[0]*rawM.shape[1] #the number of elements in the matrix, and the number of dimensions for the walker
-numWalk = numDim*3 #start out with three for each element
+N = opts.number   # number o' MCMC steps (1 sample per walker)
+B = opts.burn     # number o' burned steps
+Nwalkers = opts.walk
+Ndim = M.size
 
-Ga = np.array(np.identity(M.shape[0],float))  # first guess is II
-Ga = Ga.reshape((1,numDim)) # convert guess into coordinate vector
+Nsamp = N * Nwalkers # total number of samples in chain
 
-#define the target function, the log of the posterior (logPrior + logLikelihood)
-def log_Post(G, Mat): #note argument syntax, takes guess first as required by em. Also note that G is a vector, Mat is a matrix
-	return mmi.prop.log_L(Mat,G) + mmi.prop.log_P(G)
+# get starting location
+if opts.guessfile:
+    x01 = mmi.io.get_Mat(opts.guessfile)
+    if x01.size != rawM.size:
+        print("ERROR: inverse guess must be same size as mat_in")
+        exit(2)
+    else:
+        x01 = x01.reshape(1, Ndim)
+        sig = np.amax(x01)*0.01 # random deviation is 1% of maximum element
+        dev = np.random.normal(scale=sig, size=Nwalkers*Ndim).reshape((Nwalkers,Ndim))
+        x0 = np.tile(x01, [Nwalkers, 1]) + dev
+        x0 /= scale
+else:
+    # draw starting location from prior
+	x0 = np.random.normal(scale=sigP, size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
+	x01 = x0[0].reshape((n,n))
 
-#initialize the sampler
-sampler = em.EnsembleSampler(numWalk, numDim, log_Post, args = [M])
+#obtain covariance matrix for this starting guess
+F = mmi.types.Fisher(M, x01)
+cov = np.linalg.inv(F.mat)
 
-#burn-in
-sampler.run_mcmc(Ga, 1)
-sampler.reset()
+# initialize MPI pool for parallelization
+if opts.mpi:
+    pool = MPIPool()
+    if not pool.is_master():
+        pool.wait()
+        sys.exit(0)
 
-#run sampler
-sampler.run_mcmc(Ga, number)
+# initialize ensemble MCMC
+eMCMC = emcee.EnsembleSampler(Nwalkers, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])#, rstate=ranS)
 
-#takes output and converts to best guess, for now just last step
-Minv = sampler.flatchain[numWalk*number]
-#reshape as a matrix
-Minv = Minv.reshape((M.shape[0],M.shape[1]))
+tstart = time.clock()
 
-# write rescaled Minv to file
-rawMinv = scale*Minv.copy()
-mmi.io.print_Mat(rawMinv, outfile_name)
+# for this version, it will incrementally save the progress of the sampler to an external chain file instead of devouring RAM
 
-np.set_printoptions(precision=4)
-print("M =") 
-print(rawM)
-print("")
+# burn in
+pos, prob, state = eMCMC.run_mcmc(x0, B, storechain=False)
+eMCMC.reset()
 
-I = np.dot(rawM,rawMinv)
-print("M*Minv =")
-print(I)
-print("")
+# actual run
+logchain = open(opts.logchainfile,'w')
+matchain = open(opts.matchainfile,'w')
 
-print("Minv =") 
-print(rawMinv)
-print("")
+dum_dum = []
 
-MinvTRUE = np.linalg.inv(rawM)
-print("Minv TRUE =") 
-print(MinvTRUE)
-print("")
+for i in range(N):
+	for step in eMCMC.sample(pos, iterations=1, storechain=False):
+		position = step[0]
+		for k in range(position.shape[0]):
+			for j in range(position.shape[1]):
+				matchain.write("%f  " % position[k,j])
+			matchain.write("\n")
+		
+		m = position[0]
+		log = mmi.prop.log_PDF(m, M, sigL, sigP)
+		logchain.write("%f \n" % log)
+		
+		dum_dum = position
+	pos = dum_dum
 
-# TODO: fast fitting factor computation assumes no noise in data
-HtHt = rawM.shape[0]
-HmHm = sum(sum( I*I ))
-HtHm = np.trace(I)
-FF = HtHm/np.sqrt(HtHt*HmHm)
-print("fitting factor = %.4f"%(FF))
-print("")
+logchain.close()
+matchain.close()
 
+tend = time.clock()
+
+# close MPI pool
+if opts.mpi:
+    pool.close()
+
+
+# make convergence plot for ensemble
+print("Done with run, making plot")
+post = np.loadtxt(opts.logchainfile)
+
+plt.figure(1)
+plt.title('Chain plot for logPost')
+plt.xlabel('Iteration')
+plt.ylabel('logPost')
+index = range(post.shape[0])
+plt.plot(index, post, 'x')
+plt.ylim([-200,0])
+plt.xlim([0,N])
+plt.savefig('ensemble_logPost_chain_plot.pdf')
+
+#read in matrix chain file
+chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
+
+# get median and uncert
+med = np.array(*np.percentile(chainmat, [50], axis=0))
+plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
+minus = med - np.array(*np.percentile(chainmat, [84], axis=0))
+
+# write rescaled Minv
+rawMinv = scale*med.reshape(n,n)
+#rawMinvP = scale*plus.reshape(n,n)
+#rawMinvM = scale*minus.reshape(n,n)
+
+# to file, if needed
+#mmi.io.print_Mat(rawMinv, opts.outputfile)
+
+# print stuff to command line
+acc = np.mean(eMCMC.acceptance_fraction)
+runtime = tend-tstart
+print("The ensemble sampler yielded the following result:")
+mmi.io.print_endrun(rawM, rawMinv, runtime)
 

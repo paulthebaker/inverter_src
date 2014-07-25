@@ -90,10 +90,12 @@ def print_chain(chain, filename):
     np.savetxt(filename, chain, fmt='%+.9e')
 
 
-def print_endrun(M, Minv, dt):
+def print_endrun(M, Minv, dt, acc):
     """print end of run summary to stdout"""
     print()
     print("MCMC runtime: %.4f sec"%dt)
+    print()
+    print("Mean Acceptance: %.4f" % acc)
     print()
 
     np.set_printoptions(precision=4)
