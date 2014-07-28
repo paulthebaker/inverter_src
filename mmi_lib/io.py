@@ -90,36 +90,44 @@ def print_chain(chain, filename):
     np.savetxt(filename, chain, fmt='%+.9e')
 
 
-def print_endrun(M, Minv, dt, acc):
-    """print end of run summary to stdout"""
-    print()
-    print("MCMC runtime: %.4f sec"%dt)
-    print()
-    print("Mean Acceptance: %.4f" % acc)
-    print()
-
-    np.set_printoptions(precision=4)
-    print("M =")
-    print(M)
-    print()
-
-    I = np.dot(M,Minv)
-    print("M*Minv =")
-    print(I)
-    print()
-
-    print("Minv =")
-    print(Minv)
-    print()
-
-    MinvTRUE = np.linalg.inv(M)
-    print("Minv TRUE =")
-    print(MinvTRUE)
-    print()
-
-    # TODO: fast fitting factor computation assumes no noise in data
-    Itrue = np.identity(M.shape[0])
-    R = Itrue - I
-    FF = np.sum(R*R)
-    print("fitting factor = %.4f" %(FF))
-    print()
+def print_endrun(M, Minv, Mplus, dt, acc, auto):
+	"""print end of run summary to stdout"""
+	print()
+	print("MCMC runtime: %.4f sec"%dt)
+	print()
+	print("Mean Acceptance: %.4f" % acc)
+	print()
+	
+	auto = np.array(auto)
+	print("Autocorrelation Times:")
+	print(auto.reshape(M.shape[0],M.shape[1]))
+	print()
+	
+	np.set_printoptions(precision=4)
+	print("M =")
+	print(M)
+	print()
+	
+	I = np.dot(M,Minv)
+	print("M*Minv =")
+	print(I)
+	print()
+	
+	print("Minv =")
+	print(Minv)
+	print()
+	
+	print("M+/- =")
+	print(Mplus)
+	print()
+	
+	MinvTRUE = np.linalg.inv(M)
+	print("Minv TRUE =")
+	print(MinvTRUE)
+	print()
+	
+	Itrue = np.identity(M.shape[0])
+	R = Itrue - I
+	FF = np.sum(R*R)
+	print("fitting factor = %.4f" %(FF))
+	print()
