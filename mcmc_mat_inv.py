@@ -73,9 +73,11 @@ else:
 	x0 = np.random.normal(scale=sigP, size=Nwalkers*Ndim).reshape((Nwalkers, Ndim))
 	x01 = x0[0].reshape((n,n))
 
-#obtain covariance matrix for this starting guess
-F = mmi.types.Fisher(M, x01)
-cov = np.linalg.inv(F.mat)
+# take scaled identity matrix as covariance
+cov = (sigL/Ndim**2)*np.identity(Ndim)
+
+
+### Ensemble Method ###
 
 # initialize MPI pool for parallelization
 if opts.mpi:
@@ -96,8 +98,8 @@ pos, prob, state = eMCMC.run_mcmc(x0, B, storechain=False)
 eMCMC.reset()
 
 # actual run
-logchain = open(opts.logchainfile,'w')
-matchain = open(opts.matchainfile,'w')
+logchain = open('ensemble_log_chain.dat','w')
+matchain = open('ensemble_mat_chain.dat','w')
 
 dum_dum = []
 
@@ -106,12 +108,12 @@ for i in range(N):
 		position = step[0]
 		for k in range(position.shape[0]):
 			for j in range(position.shape[1]):
-				matchain.write("%f  " % position[k,j])
+				val = position[k,j] * scale
+				matchain.write("%f  " % val)
 			matchain.write("\n")
 		
-		m = position[0]
-		log = mmi.prop.log_PDF(m, M, sigL, sigP)
-		logchain.write("%f \n" % log)
+		log = step[1]
+		logchain.write("%f \n" % log[0])
 		
 		dum_dum = position
 	pos = dum_dum
@@ -125,59 +127,17 @@ tend = time.clock()
 if opts.mpi:
     pool.close()
 
-
-# PLOT TIME!!!!
-print("Done with run, making plot \n")
-post = np.loadtxt(opts.logchainfile)
-
-# plot of log_PDF as a function of iteration
-plt.figure(1)
-plt.title('Chain plot for logPost')
-plt.xlabel('Iteration')
-plt.ylabel('logPost')
-index = range(post.shape[0])
-plt.plot(index, post, 'x')
-plt.ylim([-200,0])
-plt.xlim([0, N/2])
-plt.savefig('ensemble_logPost_chain_plot.pdf')
-
 #read in matrix chain file
-chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
+chainmat = np.loadtxt('ensemble_mat_chain.dat').reshape((Nsamp,Ndim))
+quarters = np.array_split(chainmat,4)
 
 # get median and uncert
-med = np.array(*np.percentile(chainmat, [50], axis=0))
-plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
+med = np.array(np.percentile(chainmat, [50], axis=0))
+plus = np.array(np.percentile(chainmat, [84], axis=0)) - med
 
 # write rescaled Minv
-rawMinv = scale*med.reshape(n,n)
-rawMinvP = scale*plus.reshape(n,n)
-
-rawMinvTrue = np.linalg.inv(M)
-
-# histogram the diagonal elements of the inverse
-plt.figure(2)
-plt.suptitle('Histograms of inverse matrix elements', fontsize=20)
-
-for i in range(n):
-	plt.subplot(1, n, i+1)
-	plt.hist(chainmat[:,i+n+1], bins=20, normed=True, log=False, alpha=0.5, facecolor='blue')
-	plt.axvline(rawMinv[i,i], linewidth=2, color='blue')
-	plt.axvline(rawMinvTrue[i,i], linewidth=2, color='red')
-	plt.axvline(rawMinv[i,i] + rawMinvP[i,i], linewidth=1.5, color='purple')
-	plt.axvline(rawMinv[i,i] - rawMinvP[i,i], linewidth=1.5, color='purple')
-	plt.grid(True, 'major')
-	plt.ylim([0, 12])
-	mx = rawMinv[i,i] + 2*rawMinvP[i,i]
-	mn = rawMinv[i,i] - 2*rawMinvP[i,i]
-	plt.xlim([mn, mx])
-	plt.xticks(np.linspace(mn+.05, mx-.05, num=5), ['-0.2', '-0.1', 'True', '+0.1', '+0.2'], rotation=60)
-	plt.yticks(np.linspace(0,12,num=4))
-	plt.subplots_adjust(hspace=0.25, wspace=0.20, left=0.08, right=0.95, top=None, bottom=None)
-
-plt.savefig('ensemble_plots_matinv_hist.pdf')
-
-# to file, if needed
-#mmi.io.print_Mat(rawMinv, opts.outputfile)
+rawMinv = med.reshape(n,n)
+rawMinvP = plus.reshape(n,n)
 
 # obtain autocorrelation time from chainmat
 autocor = emcee.autocorr.integrated_time(chainmat, axis=0)
@@ -186,7 +146,11 @@ autocor = emcee.autocorr.integrated_time(chainmat, axis=0)
 acc = np.mean(eMCMC.acceptance_fraction)
 runtime = tend-tstart
 print("The ensemble sampler yielded the following result:")
-mmi.io.print_endrun(rawM, rawMinv, rawMinvP, rawMinvM, runtime, acc, autocor)
+mmi.io.print_endrun(rawM, rawMinv, rawMinvP, runtime, acc, autocor)
+
+
+
+### Metropolis-Hastings Method ###
 
 # initialize MPI pool for parallelization
 if opts.mpi:
@@ -209,18 +173,9 @@ x0 = x01.reshape(1,Ndim)
 pos, prob, state = mhMCMC.run_mcmc(x0[0], B)
 mhMCMC.reset()
 
-# recompute covariance
-#G = pos.reshape((n,n))
-#F = mmi.types.Fisher(M,G)
-#cov = np.linalg.inv(F.mat)
-
-#initialize sampler with new cov
-mhMCMC = emcee.MHSampler(cov, Ndim, mmi.prop.log_PDF, args=[M, sigL, sigP])
-
 # actual run
-# FOR NOW: reuse chain files
-logchain = open(opts.logchainfile,'w')
-matchain = open(opts.matchainfile,'w')
+logchain = open('mh_log_chain.dat','w')
+matchain = open('mh_mat_chain.dat','w')
 
 dum_dum = []
 
@@ -228,11 +183,13 @@ for i in range(N):
 	for step in mhMCMC.sample(pos, iterations=1, storechain=False):
 		position = step[0]
 		for k in range(position.shape[0]):
-			matchain.write("%f  " % position[k])
+			val = position[k] * scale
+			matchain.write("%f  " % val)
 		matchain.write("\n")
 		
-		log = mmi.prop.log_PDF(position, M, sigL, sigP)
-		logchain.write("%f \n" % log)
+		if i % Nwalkers == 0:
+			log = step[1]
+			logchain.write("%f \n" % log)
 		
 		dum_dum = position
 	pos = dum_dum
@@ -246,55 +203,16 @@ tend = time.clock()
 if opts.mpi:
     pool.close()
 
-# PLOT TIME!!!
-print("Done with run, making plot \n")
-post = np.loadtxt(opts.logchainfile)
-
-# plot of log_PDF as a function of iteration
-plt.figure(3)
-plt.title('Chain plot for logPost')
-plt.xlabel('Iteration')
-plt.ylabel('logPost')
-index = range(0,post.shape[0])
-plt.plot(index, post, 'x')
-plt.ylim([-200,0])
-plt.xlim([0, N/Nwalkers])
-plt.savefig('mh_logPost_chain_plot.pdf')
-
 #read in matrix chain file
-chainmat = np.loadtxt(opts.matchainfile).reshape((Nsamp,Ndim))
+chainmat = np.loadtxt('mh_mat_chain.dat').reshape((Nsamp,Ndim))
+quarters = np.array_split(chainmat,4)
 
 med = np.array(*np.percentile(chainmat, [50], axis=0))
 plus = np.array(*np.percentile(chainmat, [84], axis=0)) - med
 
 # write rescaled Minv
-rawMinv = scale*med.reshape(n,n)
-rawMinvP = scale*plus.reshape(n,n)
-
-# histogram the diagonal elements of the inverse
-plt.figure(4)
-plt.suptitle('Histograms of inverse matrix elements', fontsize=20)
-	
-for i in range(n):
-	plt.subplot(1, n, i+1)
-	plt.hist(chainmat[:,i+n+1], bins=20, normed=True, log=False, alpha=0.5, facecolor='blue')
-	plt.axvline(rawMinv[i,i], linewidth=2, color='blue')
-	plt.axvline(rawMinvTrue[i,i], linewidth=2, color='red')
-	plt.axvline(rawMinv[i,i] + rawMinvP[i,i], linewidth=1.5, color='purple')
-	plt.axvline(rawMinv[i,i] - rawMinvP[i,i], linewidth=1.5, color='purple')
-	plt.grid(True, 'major')
-	plt.ylim([0, 12])
-	mx = rawMinv[i,i] + 2*rawMinvP[i,i]
-	mn = rawMinv[i,i] - 2*rawMinvP[i,i]
-	plt.xlim([mn, mx])
-	plt.xticks(np.linspace(mn+.05, mx-.05, num=5), ['-0.2', '-0.1', 'True', '+0.1', '+0.2'], rotation=60)
-	plt.yticks(np.linspace(0,12,num=4))
-	plt.subplots_adjust(hspace=0.25, wspace=0.20, left=0.08, right=0.95, top=None, bottom=None)
-
-plt.savefig('mh_plots_matinv_hist.pdf')
-
-# to file, if needed
-#mmi.io.print_Mat(rawMinv, opts.outputfile)
+rawMinv = med.reshape(n,n)
+rawMinvP = plus.reshape(n,n)
 
 # obtain autocorrelation time from chainmat
 autocor = emcee.autocorr.integrated_time(chainmat, axis=0)
